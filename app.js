@@ -1,274 +1,316 @@
-(() => {
-  // ===== DOM =====
-  const viewport  = document.getElementById("viewport");
-  const scaleWrap = document.getElementById("scaleWrap");
-  const keyboard  = document.getElementById("keyboard");
+// =========================
+// DOM
+// =========================
+const stage = document.getElementById("stage");
+const keyboard = document.getElementById("keyboard");
+const kbViewport = document.getElementById("kbViewport");
+const kbScaler = document.getElementById("kbScaler");
 
-  const captureBtn = document.getElementById("captureBtn");
-  const helpBtn = document.getElementById("helpBtn");
-  const overlay = document.getElementById("overlay");
-  const closeBtn = document.getElementById("closeBtn");
+const captureBtn = document.getElementById("captureBtn");
+const helpBtn = document.getElementById("helpBtn");
 
-  const hudKey = document.getElementById("hudKey");
-  const hudCode = document.getElementById("hudCode");
-  const hudDown = document.getElementById("hudDown");
-  const hudScale = document.getElementById("hudScale");
+const modalRoot = document.getElementById("modalRoot");
+const modalBackdrop = document.getElementById("modalBackdrop");
+const helpCloseBtn = document.getElementById("helpCloseBtn");
+const helpCloseX = document.getElementById("helpCloseX");
 
-  // ===== State =====
-  let CAPTURE = true;
-  const down = new Set();
+const hudKey = document.getElementById("hudKey");
+const hudMeta = document.getElementById("hudMeta");
 
-  // ===== Helpers for layout =====
-  const K = (code, main, top = "", cls = "") => ({ t:"k", code, main, top, cls });
-  const S = (flex = 1) => ({ t:"s", flex });
+const chipKey = document.getElementById("chipKey");
+const chipCode = document.getElementById("chipCode");
+const chipKeyCode = document.getElementById("chipKeyCode");
+const chipDown = document.getElementById("chipDown");
+const chipMax = document.getElementById("chipMax");
 
-  // ANSI 104 + nav + arrows + numpad
-  const LAYOUT = [
-    [
-      K("Escape","Esc"),
-      S(0.6),
-      K("F1","F1"),K("F2","F2"),K("F3","F3"),K("F4","F4"),
-      S(0.35),
-      K("F5","F5"),K("F6","F6"),K("F7","F7"),K("F8","F8"),
-      S(0.35),
-      K("F9","F9"),K("F10","F10"),K("F11","F11"),K("F12","F12"),
-      S(0.35),
-      K("PrintScreen","Prt"),K("ScrollLock","Scr"),K("Pause","Pause"),
-    ],
-    [
-      K("Backquote","`","~"),
-      K("Digit1","1","!"),K("Digit2","2","@"),K("Digit3","3","#"),K("Digit4","4","$"),K("Digit5","5","%"),
-      K("Digit6","6","^"),K("Digit7","7","&"),K("Digit8","8","*"),K("Digit9","9","("),K("Digit0","0",")"),
-      K("Minus","-","_"),K("Equal","=","+"),
-      K("Backspace","Backspace","", "w2"),
-      S(0.35),
-      K("Insert","Ins"),K("Home","Home"),K("PageUp","PgUp"),
-      S(0.35),
-      K("NumLock","Num"),
-      K("NumpadDivide","/"),K("NumpadMultiply","*"),K("NumpadSubtract","-"),
-    ],
-    [
-      K("Tab","Tab","", "w1_5"),
-      K("KeyQ","Q"),K("KeyW","W"),K("KeyE","E"),K("KeyR","R"),K("KeyT","T"),K("KeyY","Y"),K("KeyU","U"),K("KeyI","I"),K("KeyO","O"),K("KeyP","P"),
-      K("BracketLeft","[","{"),K("BracketRight","]","}"),
-      K("Backslash","\\","|", "w1_5"),
-      S(0.35),
-      K("Delete","Del"),K("End","End"),K("PageDown","PgDn"),
-      S(0.35),
-      K("Numpad7","7"),K("Numpad8","8"),K("Numpad9","9"),
-      K("NumpadAdd","+"),
-    ],
-    [
-      K("CapsLock","Caps","", "w1_75"),
-      K("KeyA","A"),K("KeyS","S"),K("KeyD","D"),K("KeyF","F"),K("KeyG","G"),K("KeyH","H"),K("KeyJ","J"),K("KeyK","K"),K("KeyL","L"),
-      K("Semicolon","; ",":"),K("Quote","' ",'"'),
-      K("Enter","Enter","", "w2_25"),
-      S(0.35),
-      S(2.2), /* место под навигацию (пусто, чтобы сетка совпала) */
-      S(0.35),
-      K("Numpad4","4"),K("Numpad5","5"),K("Numpad6","6"),
-      K("NumpadAdd","+"),
-    ],
-    [
-      K("ShiftLeft","Shift","", "w2_25"),
-      K("KeyZ","Z"),K("KeyX","X"),K("KeyC","C"),K("KeyV","V"),K("KeyB","B"),K("KeyN","N"),K("KeyM","M"),
-      K("Comma",",","<"),K("Period",".",">"),K("Slash","/","?"),
-      K("ShiftRight","Shift","", "w2_75"),
-      S(0.35),
-      S(1.0),K("ArrowUp","▲"),S(1.0),
-      S(0.35),
-      K("Numpad1","1"),K("Numpad2","2"),K("Numpad3","3"),
-      K("NumpadEnter","Enter"),
-    ],
-    [
-      K("ControlLeft","Ctrl","", "w1_5"),
-      K("MetaLeft","Win","", "w1_5"),
-      K("AltLeft","Alt","", "w1_5"),
-      K("Space","Space","", "w6"),
-      K("AltRight","Alt","", "w1_5"),
-      K("MetaRight","Win","", "w1_5"),
-      K("ContextMenu","Menu","", "w1_5"),
-      K("ControlRight","Ctrl","", "w1_75"),
-      S(0.35),
-      K("ArrowLeft","◄"),K("ArrowDown","▼"),K("ArrowRight","►"),
-      S(0.35),
-      K("Numpad0","0","", "w2"),
-      K("NumpadDecimal","."),
-      K("NumpadEnter","Enter"),
-    ],
-  ];
+// =========================
+// STATE
+// =========================
+let CAPTURE = true;
+const down = new Set();
+let maxDown = 0;
 
-  // ===== Render =====
-  function render() {
-    keyboard.innerHTML = "";
-    for (const row of LAYOUT) {
-      const r = document.createElement("div");
-      r.className = "row";
-      for (const it of row) {
-        if (it.t === "s") {
-          const sp = document.createElement("div");
-          sp.className = "spacer";
-          sp.style.flex = String(it.flex);
-          r.appendChild(sp);
-          continue;
-        }
-        const k = document.createElement("div");
-        k.className = `key ${it.cls || ""}`.trim();
-        k.dataset.code = it.code;
+// =========================
+// Layout helpers
+// =========================
+function K(code, main, top = "", sizeClass = "") {
+  return { type: "key", code, main, top, sizeClass };
+}
+function S(flex = 1) {
+  return { type: "spacer", flex };
+}
 
-        const top = document.createElement("div");
-        top.className = "kTop";
-        top.textContent = it.top || "";
+// FULL layout (как у тебя, но с h2 классом для + и Enter numpad)
+const LAYOUT = [
+  [
+    K("Escape","Esc","Escape"),
+    S(0.6),
+    K("F1","F1"),K("F2","F2"),K("F3","F3"),K("F4","F4"),
+    S(0.35),
+    K("F5","F5"),K("F6","F6"),K("F7","F7"),K("F8","F8"),
+    S(0.35),
+    K("F9","F9"),K("F10","F10"),K("F11","F11"),K("F12","F12"),
+    S(0.35),
+    K("PrintScreen","Prt","Print"),K("ScrollLock","Scr","Scroll"),K("Pause","Pau","Pause"),
+    S(0.35),
+    K("NumLock","Num","NumL"),
+    K("NumpadDivide","/",""),K("NumpadMultiply","*",""),K("NumpadSubtract","-","")
+  ],
+  [
+    K("Backquote","`","~"),
+    K("Digit1","1","!"),K("Digit2","2","@"),K("Digit3","3","#"),K("Digit4","4","$"),K("Digit5","5","%"),
+    K("Digit6","6","^"),K("Digit7","7","&"),K("Digit8","8","*"),K("Digit9","9","("),K("Digit0","0",")"),
+    K("Minus","-","_"),K("Equal","=","+"),
+    K("Backspace","Backspace","", "w2"),
+    S(0.35),
+    K("Insert","Ins","Insert"),K("Home","Home","Home"),K("PageUp","PgUp","PageUp"),
+    S(0.35),
+    K("Numpad7","7",""),K("Numpad8","8",""),K("Numpad9","9",""),
+    K("NumpadAdd","+","", "h2")
+  ],
+  [
+    K("Tab","Tab","", "w1_5"),
+    K("KeyQ","Q",""),K("KeyW","W",""),K("KeyE","E",""),K("KeyR","R",""),K("KeyT","T",""),
+    K("KeyY","Y",""),K("KeyU","U",""),K("KeyI","I",""),K("KeyO","O",""),K("KeyP","P",""),
+    K("BracketLeft","[","{"),K("BracketRight","]","}"),
+    K("Backslash","\\","|","w1_5"),
+    S(0.35),
+    K("Delete","Del","Delete"),K("End","End","End"),K("PageDown","PgDn","PageDown"),
+    S(0.35),
+    K("Numpad4","4",""),K("Numpad5","5",""),K("Numpad6","6","")
+  ],
+  [
+    K("CapsLock","Caps","Caps","w1_75"),
+    K("KeyA","A"),K("KeyS","S"),K("KeyD","D"),K("KeyF","F"),K("KeyG","G"),
+    K("KeyH","H"),K("KeyJ","J"),K("KeyK","K"),K("KeyL","L"),
+    K("Semicolon","; ",":"),K("Quote","' ",'"'),
+    K("Enter","Enter","", "w2_25"),
+    S(0.35),
+    S(2.0),
+    S(0.35),
+    K("Numpad1","1"),K("Numpad2","2"),K("Numpad3","3"),
+    K("NumpadEnter","Enter","", "h2")
+  ],
+  [
+    K("ShiftLeft","Shift","", "w2_25"),
+    K("KeyZ","Z"),K("KeyX","X"),K("KeyC","C"),K("KeyV","V"),K("KeyB","B"),K("KeyN","N"),K("KeyM","M"),
+    K("Comma",",","<"),K("Period",".",">"),K("Slash","/","?"),
+    K("ShiftRight","Shift","", "w2_75"),
+    S(0.35),
+    S(2.0),
+    S(0.35),
+    K("Numpad0","0","", "w2"),
+    K("NumpadDecimal",".","")
+  ],
+  [
+    K("ControlLeft","Ctrl","", "w1_5"),
+    K("MetaLeft","Win","", "w1_5"),
+    K("AltLeft","Alt","", "w1_5"),
+    K("Space","Space","", "w6"),
+    K("AltRight","Alt","", "w1_5"),
+    K("MetaRight","Win","", "w1_5"),
+    K("ContextMenu","Menu","", "w1_5"),
+    K("ControlRight","Ctrl","", "w1_75"),
+    S(0.35),
+    K("ArrowLeft","◄",""),
+    K("ArrowUp","▲",""),
+    K("ArrowDown","▼",""),
+    K("ArrowRight","►","")
+  ]
+];
 
-        const main = document.createElement("div");
-        main.className = "kMain";
-        main.textContent = it.main || "";
+// =========================
+// Render
+// =========================
+function el(tag, cls) {
+  const x = document.createElement(tag);
+  if (cls) x.className = cls;
+  return x;
+}
 
-        const code = document.createElement("div");
-        code.className = "kCode";
-        code.textContent = it.code;
-
-        k.appendChild(top);
-        k.appendChild(main);
-        k.appendChild(code);
-
-        r.appendChild(k);
+function renderKeyboard() {
+  keyboard.innerHTML = "";
+  LAYOUT.forEach((row) => {
+    const r = el("div", "kRow");
+    row.forEach((item) => {
+      if (item.type === "spacer") {
+        const sp = el("div", "spacer");
+        sp.style.flex = String(item.flex);
+        r.appendChild(sp);
+        return;
       }
-      keyboard.appendChild(r);
-    }
-    fitToScreen();
-  }
+      const k = el("div", "key " + (item.sizeClass || ""));
+      k.dataset.code = item.code;
 
-  function keyEl(code) {
-    return keyboard.querySelector(`[data-code="${CSS.escape(code)}"]`);
-  }
+      const top = el("div", "kTop");
+      const main = el("div", "kMain");
+      const code = el("div", "kCode");
 
-  // ===== Fullscreen fit (NO SCROLL) =====
-  function fitToScreen() {
-    // размеры клавиатуры без трансформа
-    const w = keyboard.offsetWidth;
-    const h = keyboard.offsetHeight;
+      top.textContent = item.top || "";
+      main.textContent = item.main || "";
+      code.textContent = item.code;
 
-    const vw = viewport.clientWidth - 20;
-    const vh = viewport.clientHeight - 20;
-
-    if (!w || !h || !vw || !vh) return;
-
-    let scale = Math.min(vw / w, vh / h);
-
-    // можно чуть увеличить на больших экранах, чтобы реально "на весь экран"
-    scale = Math.max(0.35, Math.min(scale, 1.6));
-
-    scaleWrap.style.transform = `scale(${scale})`;
-    hudScale.textContent = `${Math.round(scale * 100)}%`;
-  }
-
-  const ro = new ResizeObserver(() => fitToScreen());
-  ro.observe(viewport);
-  window.addEventListener("resize", fitToScreen);
-
-  // ===== Capture mode =====
-  function shouldPrevent(e) {
-    if (!CAPTURE) return false;
-
-    // глушим браузерные хоткеи
-    if (e.ctrlKey || e.metaKey) return true;
-
-    // и скролл/пейджинг
-    const block = new Set([
-      "Space",
-      "ArrowUp","ArrowDown","ArrowLeft","ArrowRight",
-      "PageUp","PageDown","Home","End"
-    ]);
-    return block.has(e.code);
-  }
-
-  function updateHud(e) {
-    const keyText = (e.key && e.key.length === 1) ? e.key.toUpperCase() : (e.key || "—");
-    hudKey.textContent = keyText;
-    hudCode.textContent = e.code || "—";
-    hudDown.textContent = String(down.size);
-  }
-
-  function syncLocks(e) {
-    // подсветка Caps/Num если включены
-    try {
-      const capsOn = e.getModifierState && e.getModifierState("CapsLock");
-      const numOn = e.getModifierState && e.getModifierState("NumLock");
-
-      const caps = keyEl("CapsLock");
-      const num = keyEl("NumLock");
-
-      if (caps) caps.classList.toggle("lockOn", !!capsOn);
-      if (num) num.classList.toggle("lockOn", !!numOn);
-    } catch {}
-  }
-
-  // ===== Events =====
-  window.addEventListener("keydown", (e) => {
-    if (shouldPrevent(e)) e.preventDefault();
-
-    down.add(e.code);
-
-    const el = keyEl(e.code);
-    if (el) el.classList.add("pressed");
-
-    updateHud(e);
-    syncLocks(e);
-  }, { passive:false });
-
-  window.addEventListener("keyup", (e) => {
-    if (shouldPrevent(e)) e.preventDefault();
-
-    down.delete(e.code);
-
-    const el = keyEl(e.code);
-    if (el) el.classList.remove("pressed");
-
-    hudDown.textContent = String(down.size);
-    syncLocks(e);
-  }, { passive:false });
-
-  window.addEventListener("blur", () => {
-    for (const c of down) {
-      const el = keyEl(c);
-      if (el) el.classList.remove("pressed");
-    }
-    down.clear();
-    hudDown.textContent = "0";
+      k.appendChild(top);
+      k.appendChild(main);
+      k.appendChild(code);
+      r.appendChild(k);
+    });
+    keyboard.appendChild(r);
   });
 
-  // ===== Help overlay =====
-  function openHelp(on) {
-    overlay.hidden = !on;
+  // после рендера — масштаб
+  requestAnimationFrame(fitKeyboardToViewport);
+}
+
+function byCode(code) {
+  return keyboard.querySelector(`[data-code="${CSS.escape(code)}"]`);
+}
+
+// =========================
+// Fit keyboard to viewport (NO SCROLL)
+// =========================
+function fitKeyboardToViewport() {
+  const pad = 16; // внутренний запас, чтобы не упиралась
+  const vp = kbViewport.getBoundingClientRect();
+  const topbarH = 0; // viewport уже под topbar, так что 0
+
+  const availableW = vp.width - pad * 2;
+  const availableH = vp.height - pad * 2 - topbarH;
+
+  // реальные габариты клавиатуры в "нативном" размере
+  const kb = keyboard.getBoundingClientRect();
+  const scaleW = availableW / kb.width;
+  const scaleH = availableH / kb.height;
+
+  // выбираем меньший масштаб, чтобы влезло по обеим осям
+  let scale = Math.min(scaleW, scaleH);
+
+  // чуть ограничим верх, чтобы не становилось ОГРОМНЫМ на ультрашироких
+  scale = Math.min(scale, 1.05);
+  // и нижняя граница, чтобы не превратилось в крошку
+  scale = Math.max(scale, 0.55);
+
+  kbScaler.style.transform = `scale(${scale})`;
+
+  // центрирование после scale:
+  // считаем размеры после scale и двигаем чтобы было по центру
+  const scaledW = kb.width * scale;
+  const scaledH = kb.height * scale;
+
+  const offsetX = (availableW - scaledW) / 2;
+  const offsetY = (availableH - scaledH) / 2;
+
+  kbScaler.style.translate = `${Math.max(0, offsetX)}px ${Math.max(0, offsetY)}px`;
+}
+
+// реагируем на resize / zoom
+window.addEventListener("resize", () => {
+  requestAnimationFrame(fitKeyboardToViewport);
+});
+
+// =========================
+// Capture mode
+// =========================
+function shouldPrevent(e) {
+  if (!CAPTURE) return false;
+
+  const preventCodes = new Set([
+    "Space",
+    "ArrowUp","ArrowDown","ArrowLeft","ArrowRight",
+    "PageUp","PageDown","Home","End"
+  ]);
+
+  if ((e.ctrlKey || e.metaKey) && CAPTURE) return true;
+  return preventCodes.has(e.code);
+}
+
+// =========================
+// Modal
+// =========================
+function openHelp() {
+  modalRoot.classList.add("isOpen");
+  modalRoot.setAttribute("aria-hidden", "false");
+}
+function closeHelp() {
+  modalRoot.classList.remove("isOpen");
+  modalRoot.setAttribute("aria-hidden", "true");
+}
+
+helpBtn.addEventListener("click", openHelp);
+helpCloseBtn.addEventListener("click", closeHelp);
+helpCloseX.addEventListener("click", closeHelp);
+modalBackdrop.addEventListener("click", closeHelp);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && modalRoot.classList.contains("isOpen")) {
+    e.preventDefault();
+    closeHelp();
   }
-  helpBtn.addEventListener("click", () => openHelp(true));
-  closeBtn.addEventListener("click", () => openHelp(false));
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) openHelp(false);
+}, { passive:false });
+
+// =========================
+// HUD updates
+// =========================
+function toTime() {
+  const d = new Date();
+  return d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+}
+
+// =========================
+// Events
+// =========================
+window.addEventListener("keydown", (e) => {
+  if (shouldPrevent(e)) e.preventDefault();
+
+  down.add(e.code);
+  if (down.size > maxDown) maxDown = down.size;
+
+  const keyEl = byCode(e.code);
+  if (keyEl) keyEl.classList.add("pressed");
+
+  const prettyKey = (e.key && e.key.length === 1) ? e.key.toUpperCase() : (e.key || "—");
+  hudKey.textContent = prettyKey;
+  hudMeta.textContent = `${toTime()} · ${e.code}${e.repeat ? " · repeat" : ""}`;
+
+  chipKey.textContent = `event.key: ${e.key ?? "—"}`;
+  chipCode.textContent = `event.code: ${e.code ?? "—"}`;
+  chipKeyCode.textContent = `keyCode: ${e.keyCode ?? "—"}`;
+  chipDown.textContent = `down: ${down.size}`;
+  chipMax.textContent = `max: ${maxDown}`;
+}, { passive:false });
+
+window.addEventListener("keyup", (e) => {
+  if (shouldPrevent(e)) e.preventDefault();
+
+  down.delete(e.code);
+  chipDown.textContent = `down: ${down.size}`;
+
+  const keyEl = byCode(e.code);
+  if (keyEl) keyEl.classList.remove("pressed");
+}, { passive:false });
+
+window.addEventListener("blur", () => {
+  down.forEach(code => {
+    const keyEl = byCode(code);
+    if (keyEl) keyEl.classList.remove("pressed");
   });
+  down.clear();
+  chipDown.textContent = `down: 0`;
+});
 
-  window.addEventListener("keydown", (e) => {
-    if (e.code === "Escape" && !overlay.hidden) openHelp(false);
-    if (e.code === "KeyH") {
-      // H — toggle help
-      openHelp(overlay.hidden);
-    }
-  });
+// =========================
+// Buttons
+// =========================
+captureBtn.addEventListener("click", () => {
+  CAPTURE = !CAPTURE;
+  captureBtn.classList.toggle("pill--on", CAPTURE);
+  captureBtn.textContent = `Capture: ${CAPTURE ? "ON" : "OFF"}`;
+});
 
-  // ===== Buttons =====
-  captureBtn.classList.add("on");
-  captureBtn.addEventListener("click", () => {
-    CAPTURE = !CAPTURE;
-    captureBtn.classList.toggle("on", CAPTURE);
-    captureBtn.textContent = `Capture: ${CAPTURE ? "ON" : "OFF"}`;
-  });
+// Focus
+document.addEventListener("click", () => {
+  stage.focus({ preventScroll:true });
+});
 
-  // ===== Service worker =====
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  }
-
-  // init
-  render();
-})();
+// Init
+renderKeyboard();

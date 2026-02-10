@@ -8,6 +8,9 @@ const kbScaler = document.getElementById("kbScaler");
 
 const captureBtn = document.getElementById("captureBtn");
 const helpBtn = document.getElementById("helpBtn");
+const modeBtn = document.getElementById("modeBtn");
+const clearLatchBtn = document.getElementById("clearLatchBtn");
+const themeBtn = document.getElementById("themeBtn");
 
 const modalRoot = document.getElementById("modalRoot");
 const modalBackdrop = document.getElementById("modalBackdrop");
@@ -24,14 +27,67 @@ const chipDown = document.getElementById("chipDown");
 const chipMax = document.getElementById("chipMax");
 
 // =========================
-// STATE
+// STATE (with persistence)
 // =========================
-let CAPTURE = true;
-const down = new Set();
+function readBool(key, fallback) {
+  const v = localStorage.getItem(key);
+  if (v === null) return fallback;
+  return v === "1";
+}
+function writeBool(key, val) {
+  localStorage.setItem(key, val ? "1" : "0");
+}
+
+let CAPTURE = readBool("kb_capture", true);
+
+// mode: "live" | "latch"
+let MODE = localStorage.getItem("kb_mode") || "live";
+
+// theme: "night" | "day"
+let THEME = localStorage.getItem("kb_theme") || "night";
+
+const down = new Set();          // currently held
+const latched = new Set();       // persistent highlight in latch mode
 let maxDown = 0;
 
 // =========================
-// Layout helpers
+// Helpers
+// =========================
+function setTheme(theme) {
+  THEME = theme;
+  document.body.dataset.theme = theme;
+  localStorage.setItem("kb_theme", theme);
+  themeBtn.textContent = `Theme: ${theme === "night" ? "Night" : "Day"}`;
+}
+
+function setMode(mode) {
+  MODE = mode;
+  localStorage.setItem("kb_mode", mode);
+
+  modeBtn.textContent = `Mode: ${mode === "latch" ? "Latch" : "Live"}`;
+  modeBtn.classList.toggle("pill--on", mode === "latch");
+
+  // Когда уходим в Live — чистим запомненное, чтобы точно не "помнило"
+  if (mode === "live") {
+    clearLatched();
+  }
+
+  updateClearBtn();
+}
+
+function setCapture(on) {
+  CAPTURE = on;
+  writeBool("kb_capture", on);
+  captureBtn.classList.toggle("pill--on", on);
+  captureBtn.textContent = `Capture: ${on ? "ON" : "OFF"}`;
+}
+
+function updateClearBtn() {
+  clearLatchBtn.style.opacity = (MODE === "latch" && latched.size > 0) ? "1" : ".65";
+}
+
+// =========================
+// Layout
 // =========================
 function K(code, main, top = "", sizeClass = "") {
   return { type: "key", code, main, top, sizeClass };
@@ -40,7 +96,6 @@ function S(flex = 1) {
   return { type: "spacer", flex };
 }
 
-// FULL layout (как у тебя, но с h2 классом для + и Enter numpad)
 const LAYOUT = [
   [
     K("Escape","Esc","Escape"),
@@ -130,6 +185,7 @@ function el(tag, cls) {
 
 function renderKeyboard() {
   keyboard.innerHTML = "";
+
   LAYOUT.forEach((row) => {
     const r = el("div", "kRow");
     row.forEach((item) => {
@@ -139,6 +195,7 @@ function renderKeyboard() {
         r.appendChild(sp);
         return;
       }
+
       const k = el("div", "key " + (item.sizeClass || ""));
       k.dataset.code = item.code;
 
@@ -153,12 +210,12 @@ function renderKeyboard() {
       k.appendChild(top);
       k.appendChild(main);
       k.appendChild(code);
+
       r.appendChild(k);
     });
     keyboard.appendChild(r);
   });
 
-  // после рендера — масштаб
   requestAnimationFrame(fitKeyboardToViewport);
 }
 
@@ -170,30 +227,22 @@ function byCode(code) {
 // Fit keyboard to viewport (NO SCROLL)
 // =========================
 function fitKeyboardToViewport() {
-  const pad = 16; // внутренний запас, чтобы не упиралась
+  const pad = 16;
   const vp = kbViewport.getBoundingClientRect();
-  const topbarH = 0; // viewport уже под topbar, так что 0
 
   const availableW = vp.width - pad * 2;
-  const availableH = vp.height - pad * 2 - topbarH;
+  const availableH = vp.height - pad * 2;
 
-  // реальные габариты клавиатуры в "нативном" размере
   const kb = keyboard.getBoundingClientRect();
   const scaleW = availableW / kb.width;
   const scaleH = availableH / kb.height;
 
-  // выбираем меньший масштаб, чтобы влезло по обеим осям
   let scale = Math.min(scaleW, scaleH);
-
-  // чуть ограничим верх, чтобы не становилось ОГРОМНЫМ на ультрашироких
   scale = Math.min(scale, 1.05);
-  // и нижняя граница, чтобы не превратилось в крошку
   scale = Math.max(scale, 0.55);
 
   kbScaler.style.transform = `scale(${scale})`;
 
-  // центрирование после scale:
-  // считаем размеры после scale и двигаем чтобы было по центру
   const scaledW = kb.width * scale;
   const scaledH = kb.height * scale;
 
@@ -203,13 +252,10 @@ function fitKeyboardToViewport() {
   kbScaler.style.translate = `${Math.max(0, offsetX)}px ${Math.max(0, offsetY)}px`;
 }
 
-// реагируем на resize / zoom
-window.addEventListener("resize", () => {
-  requestAnimationFrame(fitKeyboardToViewport);
-});
+window.addEventListener("resize", () => requestAnimationFrame(fitKeyboardToViewport));
 
 // =========================
-// Capture mode
+// Capture rules
 // =========================
 function shouldPrevent(e) {
   if (!CAPTURE) return false;
@@ -235,7 +281,6 @@ function closeHelp() {
   modalRoot.classList.remove("isOpen");
   modalRoot.setAttribute("aria-hidden", "true");
 }
-
 helpBtn.addEventListener("click", openHelp);
 helpCloseBtn.addEventListener("click", closeHelp);
 helpCloseX.addEventListener("click", closeHelp);
@@ -247,6 +292,32 @@ window.addEventListener("keydown", (e) => {
     closeHelp();
   }
 }, { passive:false });
+
+// =========================
+// Latch logic
+// =========================
+function toggleLatch(code) {
+  const keyEl = byCode(code);
+  if (!keyEl) return;
+
+  if (latched.has(code)) {
+    latched.delete(code);
+    keyEl.classList.remove("latched");
+  } else {
+    latched.add(code);
+    keyEl.classList.add("latched");
+  }
+  updateClearBtn();
+}
+
+function clearLatched() {
+  latched.forEach((code) => {
+    const keyEl = byCode(code);
+    if (keyEl) keyEl.classList.remove("latched");
+  });
+  latched.clear();
+  updateClearBtn();
+}
 
 // =========================
 // HUD updates
@@ -261,6 +332,11 @@ function toTime() {
 // =========================
 window.addEventListener("keydown", (e) => {
   if (shouldPrevent(e)) e.preventDefault();
+
+  // в latch-режиме НЕ делаем toggle на autorepeat, иначе при удержании будет мигать
+  if (MODE === "latch" && !e.repeat) {
+    toggleLatch(e.code);
+  }
 
   down.add(e.code);
   if (down.size > maxDown) maxDown = down.size;
@@ -298,19 +374,42 @@ window.addEventListener("blur", () => {
   chipDown.textContent = `down: 0`;
 });
 
+// Click latch support (приятно как продукт)
+keyboard.addEventListener("click", (e) => {
+  const target = e.target.closest(".key");
+  if (!target) return;
+  if (MODE !== "latch") return;
+  const code = target.dataset.code;
+  if (code) toggleLatch(code);
+});
+
 // =========================
 // Buttons
 // =========================
-captureBtn.addEventListener("click", () => {
-  CAPTURE = !CAPTURE;
-  captureBtn.classList.toggle("pill--on", CAPTURE);
-  captureBtn.textContent = `Capture: ${CAPTURE ? "ON" : "OFF"}`;
+captureBtn.addEventListener("click", () => setCapture(!CAPTURE));
+
+modeBtn.addEventListener("click", () => {
+  setMode(MODE === "live" ? "latch" : "live");
+});
+
+clearLatchBtn.addEventListener("click", () => {
+  if (MODE !== "latch") return;
+  clearLatched();
+});
+
+themeBtn.addEventListener("click", () => {
+  setTheme(THEME === "night" ? "day" : "night");
+  requestAnimationFrame(fitKeyboardToViewport);
 });
 
 // Focus
-document.addEventListener("click", () => {
-  stage.focus({ preventScroll:true });
-});
+document.addEventListener("click", () => stage.focus({ preventScroll:true }));
 
+// =========================
 // Init
+// =========================
 renderKeyboard();
+setCapture(CAPTURE);
+setMode(MODE);
+setTheme(THEME);
+updateClearBtn();

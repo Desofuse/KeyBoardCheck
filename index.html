@@ -6,22 +6,21 @@
   <meta name="theme-color" content="#070710" />
 
   <title>Keyboard Tester</title>
-  <meta name="description" content="Keyboard tester: full layout, capture mode, history, rollover/ghosting. Works locally." />
+  <meta name="description" content="Keyboard tester: full layout, capture mode, latch highlight, day/night. Works locally." />
 
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-
   <link rel="stylesheet" href="styles.css" />
 </head>
 
-<body>
+<body data-theme="night">
   <header class="topbar" id="topbar">
     <div class="topbar__left">
       <div class="brand">
         <span class="brand__logo">K</span>
         <div class="brand__txt">
           <div class="brand__title">Keyboard Tester</div>
-          <div class="brand__sub">Полный layout • Capture Mode • История • Offline</div>
+          <div class="brand__sub">Full layout • Capture • Latch • Day/Night • Offline</div>
         </div>
       </div>
     </div>
@@ -32,8 +31,20 @@
         <span>Live</span>
       </button>
 
-      <button class="pill pill--on" id="captureBtn" type="button" title="Гасит скролл/хоткеи в браузере">
+      <button class="pill pill--on" id="captureBtn" type="button" title="Гасит хоткеи/скролл браузера">
         Capture: ON
+      </button>
+
+      <button class="pill pill--accent" id="modeBtn" type="button" title="Режим подсветки">
+        Mode: Live
+      </button>
+
+      <button class="pill" id="clearLatchBtn" type="button" title="Сбросить запомненные клавиши">
+        Clear
+      </button>
+
+      <button class="pill" id="themeBtn" type="button" title="Сменить тему">
+        Theme: Night
       </button>
 
       <button class="pill" id="helpBtn" type="button" title="Как пользоваться">
@@ -43,12 +54,12 @@
   </header>
 
   <main class="stage" id="stage" tabindex="0" aria-label="Keyboard tester stage">
-    <!-- HUD -->
     <section class="hud">
       <div class="hud__row">
         <div class="hud__key" id="hudKey">—</div>
         <div class="hud__meta" id="hudMeta">Нажми клавишу</div>
       </div>
+
       <div class="hud__row2">
         <span class="chip" id="chipKey">event.key: —</span>
         <span class="chip" id="chipCode">event.code: —</span>
@@ -58,7 +69,6 @@
       </div>
     </section>
 
-    <!-- KEYBOARD VIEWPORT -->
     <section class="kbViewport" id="kbViewport" aria-label="Keyboard viewport">
       <div class="kbScaler" id="kbScaler">
         <div class="keyboard" id="keyboard"></div>
@@ -78,9 +88,11 @@
 
       <div class="modal__body">
         <ul class="list">
-          <li>Нажимай клавиши — подсветка идёт по <b>event.code</b> (физическая клавиша).</li>
-          <li><b>Capture ON</b> — глушит хоткеи браузера (Ctrl/Meta + …, Space, стрелки и т.п.).</li>
-          <li>Закрытие: кнопка Close, <b>Esc</b>, или клик вне окна.</li>
+          <li><b>Live</b> — подсветка только пока удерживаешь.</li>
+          <li><b>Latch</b> — нажатие <b>запоминает</b> клавишу и держит подсветку. Повторное нажатие снимает.</li>
+          <li><b>Clear</b> — сброс запомненных клавиш.</li>
+          <li><b>Capture ON</b> — глушит хоткеи браузера (Ctrl/Meta+…, Space, стрелки и т.п.).</li>
+          <li>Закрытие окна: <b>Close</b>, <b>Esc</b>, или клик вне окна.</li>
         </ul>
       </div>
 

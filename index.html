@@ -4,56 +4,91 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#070710" />
-  <title>Keyboard Fullscreen</title>
 
-  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <title>Keyboard Tester</title>
+  <meta name="description" content="Keyboard tester: full layout, capture mode, history, rollover/ghosting. Works locally." />
+
   <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
 
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
-  <!-- НИКАКИХ правых кнопок/пузырей тут нет -->
-  <main id="stage" aria-label="Keyboard stage">
-    <div id="hud" class="hud" aria-live="polite">
-      <div class="hudRow">
-        <span class="badge" id="liveDot">●</span>
-        <span class="hudText">Live</span>
-        <button class="hudBtn" id="captureBtn" type="button">Capture: ON</button>
-        <button class="hudBtn" id="helpBtn" type="button">Help</button>
-      </div>
-      <div class="hudRow hudSmall">
-        <span id="hudKey">—</span>
-        <span class="sep">•</span>
-        <span id="hudCode">—</span>
-        <span class="sep">•</span>
-        <span id="hudDown">0</span>
-        <span class="sep">•</span>
-        <span id="hudScale">100%</span>
+  <header class="topbar" id="topbar">
+    <div class="topbar__left">
+      <div class="brand">
+        <span class="brand__logo">K</span>
+        <div class="brand__txt">
+          <div class="brand__title">Keyboard Tester</div>
+          <div class="brand__sub">Полный layout • Capture Mode • История • Offline</div>
+        </div>
       </div>
     </div>
 
-    <section id="viewport" class="viewport">
-      <div id="scaleWrap" class="scaleWrap">
-        <div id="keyboard" class="keyboard" aria-label="Fullscreen keyboard"></div>
+    <div class="topbar__right">
+      <button class="pill" id="livePill" type="button" title="Статус">
+        <span class="dot dot--live"></span>
+        <span>Live</span>
+      </button>
+
+      <button class="pill pill--on" id="captureBtn" type="button" title="Гасит скролл/хоткеи в браузере">
+        Capture: ON
+      </button>
+
+      <button class="pill" id="helpBtn" type="button" title="Как пользоваться">
+        Help
+      </button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage" tabindex="0" aria-label="Keyboard tester stage">
+    <!-- HUD -->
+    <section class="hud">
+      <div class="hud__row">
+        <div class="hud__key" id="hudKey">—</div>
+        <div class="hud__meta" id="hudMeta">Нажми клавишу</div>
+      </div>
+      <div class="hud__row2">
+        <span class="chip" id="chipKey">event.key: —</span>
+        <span class="chip" id="chipCode">event.code: —</span>
+        <span class="chip" id="chipKeyCode">keyCode: —</span>
+        <span class="chip" id="chipDown">down: 0</span>
+        <span class="chip" id="chipMax">max: 0</span>
       </div>
     </section>
 
-    <!-- Help overlay (по кнопке Help или клавише H) -->
-    <div id="overlay" class="overlay" hidden>
-      <div class="modal">
-        <div class="modalTitle">Как пользоваться</div>
-        <div class="modalText">
-          • Нажимай клавиши — они подсвечиваются по <b>event.code</b> (физическая клавиша).<br/>
-          • <b>Capture ON</b> — глушит хоткеи браузера (Ctrl/Meta + …, Space, стрелки и т.п.).<br/>
-          • Закрыть: кнопка Close, клавиша <b>Esc</b> или <b>H</b>.
-        </div>
-        <div class="modalActions">
-          <button id="closeBtn" class="modalBtn" type="button">Close</button>
-        </div>
+    <!-- KEYBOARD VIEWPORT -->
+    <section class="kbViewport" id="kbViewport" aria-label="Keyboard viewport">
+      <div class="kbScaler" id="kbScaler">
+        <div class="keyboard" id="keyboard"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- HELP MODAL -->
+  <div class="modalRoot" id="modalRoot" aria-hidden="true">
+    <div class="modalBackdrop" id="modalBackdrop"></div>
+
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="modal__header">
+        <div class="modal__title" id="helpTitle">Как пользоваться</div>
+        <button class="iconBtn" id="helpCloseX" type="button" aria-label="Закрыть">✕</button>
+      </div>
+
+      <div class="modal__body">
+        <ul class="list">
+          <li>Нажимай клавиши — подсветка идёт по <b>event.code</b> (физическая клавиша).</li>
+          <li><b>Capture ON</b> — глушит хоткеи браузера (Ctrl/Meta + …, Space, стрелки и т.п.).</li>
+          <li>Закрытие: кнопка Close, <b>Esc</b>, или клик вне окна.</li>
+        </ul>
+      </div>
+
+      <div class="modal__footer">
+        <button class="btn" id="helpCloseBtn" type="button">Close</button>
       </div>
     </div>
-  </main>
+  </div>
 
   <script src="app.js"></script>
 </body>

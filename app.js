@@ -257,4 +257,368 @@
       if (e.key === "Escape" && isHelpOpen()) closeHelp();
     });
 
-    window.addEventListener("o
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    window.addEventListener("focus", updateFocus);
+    window.addEventListener("blur", updateFocus);
+
+    document.addEventListener("fullscreenchange", () => {
+      el.btnFS.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
+      fitKeyboard();
+    });
+  }
+
+  function applyAll(){
+    applyTheme();
+    applyControls();
+    rerenderLegends();
+    renderHighlights();
+    updateCounters();
+    fitKeyboard();
+  }
+
+  function applyTheme(){
+    document.documentElement.setAttribute("data-theme", state.theme);
+
+    // small theme-color tweak
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", state.theme === "night" ? "#0b0f19" : "#eef1f6");
+
+    el.btnTheme.textContent = `Theme: ${state.theme === "night" ? "Night" : "Day"}`;
+  }
+
+  function applyControls(){
+    el.btnCapture.setAttribute("aria-pressed", String(state.capture));
+    el.btnCapture.textContent = `Capture: ${state.capture ? "ON" : "OFF"}`;
+
+    el.btnMode.setAttribute("aria-pressed", String(state.mode === "latch"));
+    el.btnMode.textContent = `Mode: ${state.mode === "live" ? "Live" : "Latch"}`;
+
+    el.btnLang.textContent = state.lang.toUpperCase();
+    el.btnPlatform.textContent = state.platform === "windows" ? "Windows" : "Mac";
+
+    el.pillMode.textContent = state.mode === "live" ? "LIVE" : "LATCH";
+  }
+
+  // --------- Keyboard rendering ---------
+  function buildKeyboard(){
+    el.kbScale.innerHTML = "";
+    const kb = document.createElement("div");
+    kb.className = "kb";
+    kb.id = "kb";
+
+    for (const rowBlocks of LAYOUT){
+      const row = document.createElement("div");
+      row.className = "row";
+
+      rowBlocks.forEach((block, idx) => {
+        if (block.length === 1 && block[0].spacer){
+          const spacer = document.createElement("div");
+          spacer.className = "blockSpacer";
+          spacer.style.width = "10px";
+          row.appendChild(spacer);
+          return;
+        }
+
+        block.forEach((k) => row.appendChild(makeKey(k)));
+
+        if (idx !== rowBlocks.length - 1){
+          const spacer = document.createElement("div");
+          spacer.className = "blockSpacer";
+          row.appendChild(spacer);
+        }
+      });
+
+      kb.appendChild(row);
+    }
+
+    el.kbScale.appendChild(kb);
+  }
+
+  function makeKey(def){
+    const key = document.createElement("div");
+    key.className = "key";
+    key.dataset.code = def.c;
+    key.style.setProperty("--u", String(def.u ?? 1));
+
+    const main = document.createElement("div");
+    main.className = "main";
+    const sub = document.createElement("div");
+    sub.className = "sub";
+
+    key.appendChild(main);
+    key.appendChild(sub);
+
+    // click to "latch" (optional convenience) only in latch mode
+    key.addEventListener("click", () => {
+      if (state.mode !== "latch") return;
+      const code = def.c;
+      if (state.latched.has(code)) state.latched.delete(code);
+      else state.latched.add(code);
+      renderHighlights();
+      updateCounters();
+    });
+
+    return key;
+  }
+
+  function rerenderLegends(){
+    const keys = el.kbScale.querySelectorAll(".key");
+    keys.forEach((node) => {
+      const code = node.dataset.code;
+      const main = node.querySelector(".main");
+      const sub = node.querySelector(".sub");
+
+      const { label, small } = legendFor(code);
+      main.textContent = label;
+      sub.textContent = small;
+
+      // slightly different style for wide utility keys
+      const wide = isWideKey(code);
+      node.classList.toggle("wide", wide);
+    });
+
+    fitKeyboard();
+  }
+
+  function isWideKey(code){
+    return ["Backspace","Tab","CapsLock","Enter","ShiftLeft","ShiftRight","Space"].includes(code);
+  }
+
+  function legendFor(code){
+    // Function keys
+    if (/^F\d+$/.test(code)) return { label: code, small: code };
+
+    // Numpad keys
+    if (code.startsWith("Numpad")){
+      const m = {
+        NumpadDivide: "/", NumpadMultiply: "*", NumpadSubtract: "−", NumpadAdd: "+",
+        NumpadDecimal: ".", NumpadEnter: "Enter"
+      };
+      if (code === "NumLock") return { label: "Num", small: "NumLock" };
+      if (m[code]) return { label: m[code], small: code.replace("Numpad","Numpa") };
+      const digit = code.replace("Numpad","");
+      if (/^\d+$/.test(digit)) return { label: digit, small: code };
+      return { label: code.replace("Numpad",""), small: code };
+    }
+
+    // Arrows
+    if (code.startsWith("Arrow")){
+      const a = { ArrowUp:"▲", ArrowDown:"▼", ArrowLeft:"◀", ArrowRight:"▶" };
+      return { label: a[code] || code, small: code };
+    }
+
+    // Nav cluster
+    const nav = {
+      Insert:"Ins", Delete:"Del", Home:"Home", End:"End", PageUp:"PgUp", PageDown:"PgDn"
+    };
+    if (nav[code]) return { label: nav[code], small: code };
+
+    // Modifiers / specials
+    const isMac = state.platform === "mac";
+    const mod = {
+      Escape: ["Esc","Escape"],
+      Backspace: ["Backspace","Backspace"],
+      Tab: ["Tab","Tab"],
+      CapsLock: ["Caps","CapsLock"],
+      Enter: ["Enter","Enter"],
+      ShiftLeft: ["Shift","ShiftLeft"],
+      ShiftRight: ["Shift","ShiftRight"],
+      ControlLeft: ["Ctrl","ControlLeft"],
+      ControlRight: ["Ctrl","ControlRight"],
+      AltLeft: isMac ? ["⌥","AltLeft"] : ["Alt","AltLeft"],
+      AltRight: isMac ? ["⌥","AltRight"] : ["Alt","AltRight"],
+      MetaLeft: isMac ? ["⌘","MetaLeft"] : ["Win","MetaLeft"],
+      MetaRight: isMac ? ["⌘","MetaRight"] : ["Win","MetaRight"],
+      ContextMenu: isMac ? ["Menu","ContextMenu"] : ["Menu","ContextMenu"],
+      Space: ["Space","Space"],
+      PrintScreen: ["Prt","PrintScreen"],
+      ScrollLock: ["Scr","ScrollLock"],
+      Pause: ["Pause","Pause"]
+    };
+    if (mod[code]) return { label: mod[code][0], small: mod[code][1] };
+
+    // Letters
+    if (code.startsWith("Key")){
+      if (state.lang === "ru" && RU[code]) return { label: RU[code], small: code };
+      return { label: code.replace("Key",""), small: code };
+    }
+
+    // Punctuation / digits (layout aware)
+    const dict = (state.lang === "ru") ? RU : EN;
+    if (dict[code]){
+      const v = dict[code];
+      if (Array.isArray(v)) return { label: v[0], small: code };
+      return { label: String(v), small: code };
+    }
+
+    // Digits if not mapped
+    if (code.startsWith("Digit")){
+      return { label: code.replace("Digit",""), small: code };
+    }
+
+    return { label: code, small: code };
+  }
+
+  // --------- Highlight logic ---------
+  function installEvents(){
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    window.addEventListener("keyup", onKeyUp, { capture: true });
+  }
+
+  function shouldIgnoreEvent(e){
+    const t = e.target;
+    if (!t) return false;
+    const tag = t.tagName ? t.tagName.toLowerCase() : "";
+    return tag === "input" || tag === "textarea" || tag === "select" || t.isContentEditable;
+  }
+
+  function onKeyDown(e){
+    if (shouldIgnoreEvent(e)) return;
+
+    // Capture mode: block browser hotkeys/scroll
+    if (state.capture){
+      // allow Ctrl+L etc? — нет, смысл capture как раз глушить
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const code = e.code || "";
+    if (!code) return;
+
+    state.down.add(code);
+    if (state.mode === "latch") state.latched.add(code);
+
+    if (state.down.size > state.maxDown) state.maxDown = state.down.size;
+
+    updateInfo(e);
+    renderHighlights();
+    updateCounters();
+  }
+
+  function onKeyUp(e){
+    if (shouldIgnoreEvent(e)) return;
+
+    if (state.capture){
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const code = e.code || "";
+    if (!code) return;
+
+    state.down.delete(code);
+
+    updateInfo(e);
+    renderHighlights();
+    updateCounters();
+  }
+
+  function renderHighlights(){
+    const keys = el.kbScale.querySelectorAll(".key");
+    keys.forEach((node) => {
+      const code = node.dataset.code;
+      const pressed = state.down.has(code);
+      const latched = state.mode === "latch" && state.latched.has(code);
+
+      node.classList.toggle("pressed", pressed);
+      node.classList.toggle("latched", !pressed && latched);
+    });
+  }
+
+  // --------- Info / counters ---------
+  function updateInfo(e){
+    if (!e){
+      el.vKey.textContent = "—";
+      el.vCode.textContent = "—";
+      el.vKeyCode.textContent = "—";
+      el.vRepeat.textContent = "—";
+      return;
+    }
+    el.vKey.textContent = String(e.key ?? "—");
+    el.vCode.textContent = String(e.code ?? "—");
+    el.vKeyCode.textContent = String(e.keyCode ?? "—");
+    el.vRepeat.textContent = e.repeat ? "yes" : "no";
+  }
+
+  function updateCounters(){
+    el.vDown.textContent = String(state.down.size);
+    el.vMax.textContent = String(state.maxDown);
+    el.vLatched.textContent = String(state.latched.size);
+    el.pillMode.textContent = state.mode === "live" ? "LIVE" : "LATCH";
+  }
+
+  function updateOnline(){
+    const offline = !navigator.onLine;
+    el.pillOffline.textContent = `offline: ${offline ? "yes" : "no"}`;
+  }
+
+  function updateFocus(){
+    const focused = document.hasFocus();
+    el.pillFocus.textContent = `focus: ${focused ? "yes" : "no"}`;
+  }
+
+  // --------- Help modal ---------
+  function isHelpOpen(){
+    return el.overlay.classList.contains("open");
+  }
+  function openHelp(){
+    el.overlay.classList.add("open");
+    el.overlay.setAttribute("aria-hidden", "false");
+  }
+  function closeHelp(){
+    el.overlay.classList.remove("open");
+    el.overlay.setAttribute("aria-hidden", "true");
+  }
+
+  // --------- Auto-fit keyboard so it never overflows ---------
+  function installFit(){
+    // Keep stage height accurate: header can wrap into 2 lines on small screens
+    const updateStageHeight = () => {
+      const topH = el.topbar.offsetHeight;
+      const stageH = Math.max(200, window.innerHeight - topH);
+      el.stage.style.height = `${stageH}px`;
+    };
+
+    updateStageHeight();
+    window.addEventListener("resize", () => {
+      updateStageHeight();
+      fitKeyboard();
+    });
+
+    ro = new ResizeObserver(() => {
+      updateStageHeight();
+      fitKeyboard();
+    });
+    ro.observe(el.topbar);
+  }
+
+  function fitKeyboard(){
+    const kb = el.kbScale;
+    const stage = el.stage;
+
+    if (!kb || !stage) return;
+
+    const pad = 18; // safe padding around keyboard inside stage
+    const availW = stage.clientWidth - pad * 2;
+    const availH = stage.clientHeight - pad * 2;
+
+    const naturalW = kb.offsetWidth;
+    const naturalH = kb.offsetHeight;
+
+    if (naturalW <= 0 || naturalH <= 0) return;
+
+    // allow slight upscale on big monitors, but keep it classy
+    const scale = Math.min(availW / naturalW, availH / naturalH, 1.12);
+    document.documentElement.style.setProperty("--kb-scale", String(scale));
+  }
+
+  // --------- Service worker ---------
+  function installSW(){
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+
+  // boot
+  document.addEventListener("DOMContentLoaded", init);
+})();

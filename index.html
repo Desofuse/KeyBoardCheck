@@ -1,87 +1,15 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0f19" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Keyboard Tester</title>
-
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
-  <header class="topbar" id="topbar">
-    <div class="brand">
-      <div class="logo" aria-hidden="true">K</div>
-      <div class="brandText">
-        <div class="title">Keyboard Tester</div>
-        <div class="subtitle">Full layout • Capture • Latch • Day/Night • Offline</div>
-      </div>
-    </div>
-
-    <div class="controls" role="toolbar" aria-label="Controls">
-      <button class="chip live" id="btnLive" type="button" title="Status" disabled>
-        <span class="dot"></span><span id="liveText">Live</span>
-      </button>
-
-      <button class="chip" id="btnCapture" type="button" aria-pressed="false">Capture: OFF</button>
-      <button class="chip" id="btnMode" type="button" aria-pressed="false">Mode: Live</button>
-      <button class="chip" id="btnClear" type="button">Clear</button>
-
-      <span class="sep" aria-hidden="true"></span>
-
-      <button class="chip" id="btnLang" type="button">EN</button>
-      <button class="chip" id="btnPlatform" type="button">Windows</button>
-      <button class="chip" id="btnTheme" type="button">Theme: Night</button>
-      <button class="chip" id="btnFS" type="button">Fullscreen</button>
-      <button class="chip" id="btnHelp" type="button">Help</button>
-    </div>
-
-    <!-- компактная инфо-панель: теперь НЕ перекрывает клавиатуру -->
-    <div class="infobar" id="infobar" aria-live="polite">
-      <div class="infoItem"><span class="k">event.key</span><span class="v" id="vKey">—</span></div>
-      <div class="infoItem"><span class="k">event.code</span><span class="v" id="vCode">—</span></div>
-      <div class="infoItem"><span class="k">keyCode</span><span class="v" id="vKeyCode">—</span></div>
-      <div class="infoItem"><span class="k">repeat</span><span class="v" id="vRepeat">—</span></div>
-      <div class="infoItem"><span class="k">down</span><span class="v" id="vDown">0</span></div>
-      <div class="infoItem"><span class="k">max</span><span class="v" id="vMax">0</span></div>
-      <div class="infoItem"><span class="k">latched</span><span class="v" id="vLatched">0</span></div>
-
-      <div class="infoPills">
-        <span class="pill" id="pillMode">LIVE</span>
-        <span class="pill" id="pillOffline">offline: no</span>
-        <span class="pill" id="pillFocus">focus: yes</span>
-      </div>
-    </div>
-  </header>
-
-  <main class="stage" id="stage" tabindex="-1" aria-label="Keyboard stage">
-    <!-- kbScale будет автоматически масштабироваться, чтобы НИЧЕГО не вылезало -->
-    <div class="kbScale" id="kbScale" aria-label="Virtual keyboard"></div>
-  </main>
-
-  <!-- Help modal -->
-  <div class="overlay" id="overlay" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
-      <button class="iconBtn" id="btnClose" type="button" aria-label="Close">×</button>
-
-      <h2 id="helpTitle">Как пользоваться</h2>
-      <ul class="helpList">
-        <li><b>Live</b> — подсвечивает только пока клавиша зажата.</li>
-        <li><b>Latch</b> — запоминает нажатые клавиши и держит подсветку, пока не нажмёшь <b>Clear</b>.</li>
-        <li><b>Capture</b> — глушит хоткеи/скролл браузера (Ctrl/Meta + комбинации, Space, стрелки и т.п.).</li>
-        <li>Подсветка привязана к <b>event.code</b> — это “физическая” клавиша.</li>
-        <li>Если “не ловит” — кликни по пустому месту страницы, чтобы вернуть фокус.</li>
-      </ul>
-
-      <div class="modalActions">
-        <button class="chip primary" id="btnOk" type="button">OK</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="./app.js"></script>
+  <div id="app"></div>
+  <script src="./app.js" defer></script>
 </body>
 </html>

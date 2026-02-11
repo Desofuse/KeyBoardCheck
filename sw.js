@@ -1,4 +1,4 @@
-const CACHE = "kb-fullscreen-v6";
+const CACHE = "kb-fullscreen-v7"; // <-- ОБЯЗАТЕЛЬНО меняй версию при каждом релизе
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,25 +24,32 @@ self.addEventListener("activate", (e) => {
   })());
 });
 
-// network-first for navigations, cache-first for everything else
 self.addEventListener("fetch", (e) => {
   const req = e.request;
+  const url = new URL(req.url);
+
   if (req.method !== "GET") return;
 
-  if (req.mode === "navigate") {
+  // не трогаем сторонние домены
+  if (url.origin !== location.origin) return;
+
+  // network-first для html
+  if (url.pathname.endsWith("/") || url.pathname.endsWith("/index.html")) {
     e.respondWith((async () => {
       try {
         const fresh = await fetch(req, { cache: "no-store" });
         const c = await caches.open(CACHE);
-        c.put("./index.html", fresh.clone());
+        c.put(req, fresh.clone());
         return fresh;
       } catch {
-        return (await caches.match("./index.html")) || Response.error();
+        const cached = await caches.match(req);
+        return cached || caches.match("./index.html");
       }
     })());
     return;
   }
 
+  // cache-first для остального
   e.respondWith((async () => {
     const cached = await caches.match(req);
     if (cached) return cached;

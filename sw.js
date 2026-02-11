@@ -1,4 +1,4 @@
-const CACHE = "kb-fullscreen-v8"; // <-- ОБЯЗАТЕЛЬНО меняй версию при каждом релизе
+const CACHE = "kb-fullscreen-v9"; // <-- ОБЯЗАТЕЛЬНО меняй версию при каждом релизе
 const ASSETS = [
   "./",
   "./index.html",

@@ -696,32 +696,48 @@
 
   fsBtn.addEventListener("click", toggleFullscreen);
   helpBtn.addEventListener("click", toggleHelp);
+   
+    // Modal open/close (HARD FIX)
+  function closeHelp() {
+    helpBackdrop.hidden = true;
+    helpBtn.setAttribute("aria-expanded", "false");
+  }
 
-  // Modal close
-  helpClose.addEventListener("click", () => renderHelp(false));
-  helpOk.addEventListener("click", () => renderHelp(false));
-  helpBackdrop.addEventListener("click", (e) => {
-    if (e.target === helpBackdrop) renderHelp(false);
+  function openHelp() {
+    renderHelp(true);
+  }
+
+  function toggleHelp() {
+    const willOpen = helpBackdrop.hidden;
+    if (willOpen) openHelp();
+    else closeHelp();
+  }
+
+  helpBtn.addEventListener("click", toggleHelp);
+
+  // Важно: клики внутри модалки не должны закрывать её
+  const modalEl = helpBackdrop.querySelector(".modal");
+  if (modalEl) {
+    modalEl.addEventListener("click", (e) => e.stopPropagation());
+  }
+
+  // Крестик и OK
+  helpClose.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeHelp();
   });
+
+  helpOk.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeHelp();
+  });
+
+  // Клик по фону — закрыть
+  helpBackdrop.addEventListener("click", () => closeHelp());
+
+  // ESC — закрыть
   window.addEventListener("keydown", (e) => {
-    if (!helpBackdrop.hidden && e.key === "Escape") renderHelp(false);
+    if (!helpBackdrop.hidden && e.key === "Escape") closeHelp();
   });
-
-  // Global listeners
-  window.addEventListener("keydown", onKeyDown, { passive: false });
-  window.addEventListener("keyup", onKeyUp, { passive: false });
-
-  window.addEventListener("online", updateOnlineState);
-  window.addEventListener("offline", updateOnlineState);
-  window.addEventListener("focus", updateFocusState);
-  window.addEventListener("blur", updateFocusState);
-  window.addEventListener("resize", queueResize);
-
-  // Init
-  document.body.dataset.theme = settings.theme;
-  updateTopbar();
-  buildKeyboard();
-  updateOnlineState();
-  updateFocusState();
-  chipMode.textContent = settings.mode.toUpperCase();
-})();

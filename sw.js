@@ -1,4 +1,4 @@
-const CACHE = "kb-fullscreen-v3";
+const CACHE = "kb-fullscreen-v4";
 const ASSETS = [
   "./",
   "./index.html",

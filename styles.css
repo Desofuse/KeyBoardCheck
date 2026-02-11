@@ -78,12 +78,24 @@ body{
   --overlay: rgba(20,30,45,0.18);
 }
 
+/* было: body с var(--bg0) — это ломает тему */
 body{
+  margin:0;
+  font-family: var(--font);
+  overflow:hidden;
+  user-select:none;
+  background:#000; /* любой нейтральный, body нам не важен */
+}
+
+/* ВОТ ГДЕ ДОЛЖЕН БЫТЬ ФОН И ЦВЕТ — НА #app */
+#app{
   background:
     radial-gradient(900px 500px at 25% 10%, rgba(124,58,237,0.25), transparent 60%),
     radial-gradient(900px 600px at 80% 30%, rgba(37,99,235,0.20), transparent 60%),
     linear-gradient(135deg, var(--bg0), var(--bg1) 45%, var(--bg2));
   color: var(--text);
+}
+
 }
 
 /* topbar */

@@ -1,624 +1,727 @@
+/* Keyboard Tester — fullscreen, grid-aligned, RU/EN help, Day/Night, Live/Latch, Capture
+   - подсветка по event.code (физическая клавиша)
+   - режим Live: подсветка только пока держишь
+   - режим Latch: запоминает нажатое и держит подсветку (повторное нажатие снимает)
+   - Help автоматически RU/EN в зависимости от выбранного языка
+   - серые подписи вида "KeyF/KeyH" НЕ рисуем вообще
+*/
+
 (() => {
-  const LS_KEY = "kbTesterSettings_v3";
+  const STORAGE_KEY = "kb_tester_settings_v3";
 
-  const state = {
-    capture: false,
-    mode: "live",       // live | latch
-    theme: "night",     // night | day
-    lang: "en",         // en | ru
-    platform: "windows",// windows | mac
-
-    down: new Set(),    // currently pressed (event.code)
-    latched: new Set(), // remembered pressed (for latch mode)
-    maxDown: 0
+  const DEFAULTS = {
+    lang: "ru",        // ru | en
+    os: "win",         // win | mac
+    theme: "night",    // night | day
+    mode: "live",      // live | latch
+    capture: false
   };
 
-  const el = {};
-  let ro = null;
-
-  // --------- Layout data (physical) ---------
-  // We build rows as blocks to keep realistic gaps (main / nav / numpad)
-  const LAYOUT = [
-    // Row 0: Esc | F-keys | Prt/Scr/Pause
-    [
-      [{ c: "Escape", u: 1.25 }],
-      [
-        { c: "F1" }, { c: "F2" }, { c: "F3" }, { c: "F4" },
-        { c: "F5" }, { c: "F6" }, { c: "F7" }, { c: "F8" },
-        { c: "F9" }, { c: "F10" }, { c: "F11" }, { c: "F12" }
+  const I18N = {
+    ru: {
+      title: "Keyboard Tester",
+      live: "Live",
+      captureOn: "Capture: ON",
+      captureOff: "Capture: OFF",
+      modeLive: "Mode: Live",
+      modeLatch: "Mode: Latch",
+      clear: "Clear",
+      themeNight: "Theme: Night",
+      themeDay: "Theme: Day",
+      fullscreen: "Fullscreen",
+      help: "Help",
+      helpTitle: "Как пользоваться",
+      ok: "OK",
+      helpLines: [
+        "**Live** — подсвечивает только пока клавиша зажата.",
+        "**Latch** — запоминает нажатые клавиши и держит подсветку, пока не нажмёшь **Clear** (или нажмёшь клавишу повторно).",
+        "**Capture** — глушит хоткеи/скролл браузера (Ctrl/Meta + комбинации, Space, стрелки и т.п.).",
+        "Подсветка завязана на **event.code** — это *физическая* клавиша.",
+        "Если “не ловит” — кликни в пустое место страницы, чтобы вернуть фокус."
       ],
-      [{ c: "PrintScreen" }, { c: "ScrollLock" }, { c: "Pause" }]
-    ],
-
-    // Row 1: ` 1..0 - = Backspace | Ins Home PgUp | Num / * -
-    [
-      [
-        { c: "Backquote" },
-        { c: "Digit1" }, { c: "Digit2" }, { c: "Digit3" }, { c: "Digit4" }, { c: "Digit5" },
-        { c: "Digit6" }, { c: "Digit7" }, { c: "Digit8" }, { c: "Digit9" }, { c: "Digit0" },
-        { c: "Minus" }, { c: "Equal" },
-        { c: "Backspace", u: 2.25 }
+      hudHint: "Нажми клавишу",
+      hudLiveHint: "Live: держи клавишу"
+    },
+    en: {
+      title: "Keyboard Tester",
+      live: "Live",
+      captureOn: "Capture: ON",
+      captureOff: "Capture: OFF",
+      modeLive: "Mode: Live",
+      modeLatch: "Mode: Latch",
+      clear: "Clear",
+      themeNight: "Theme: Night",
+      themeDay: "Theme: Day",
+      fullscreen: "Fullscreen",
+      help: "Help",
+      helpTitle: "How to use",
+      ok: "OK",
+      helpLines: [
+        "**Live** — highlights only while the key is held down.",
+        "**Latch** — remembers pressed keys and keeps them highlighted until you hit **Clear** (or press the key again).",
+        "**Capture** — suppresses browser hotkeys/scroll (Ctrl/Meta combos, Space, arrows, etc.).",
+        "Highlight is based on **event.code** — the *physical* key.",
+        "If it doesn’t capture — click empty space to restore focus."
       ],
-      [{ c: "Insert" }, { c: "Home" }, { c: "PageUp" }],
-      [{ c: "NumLock" }, { c: "NumpadDivide" }, { c: "NumpadMultiply" }, { c: "NumpadSubtract" }]
-    ],
-
-    // Row 2: Tab Q..] \ | Del End PgDn | 7 8 9 +
-    [
-      [
-        { c: "Tab", u: 1.6 },
-        { c: "KeyQ" }, { c: "KeyW" }, { c: "KeyE" }, { c: "KeyR" }, { c: "KeyT" },
-        { c: "KeyY" }, { c: "KeyU" }, { c: "KeyI" }, { c: "KeyO" }, { c: "KeyP" },
-        { c: "BracketLeft" }, { c: "BracketRight" },
-        { c: "Backslash", u: 1.6 }
-      ],
-      [{ c: "Delete" }, { c: "End" }, { c: "PageDown" }],
-      [{ c: "Numpad7" }, { c: "Numpad8" }, { c: "Numpad9" }, { c: "NumpadAdd" }]
-    ],
-
-    // Row 3: Caps A..' Enter | (gap) | 4 5 6 (gap)
-    [
-      [
-        { c: "CapsLock", u: 1.9 },
-        { c: "KeyA" }, { c: "KeyS" }, { c: "KeyD" }, { c: "KeyF" }, { c: "KeyG" },
-        { c: "KeyH" }, { c: "KeyJ" }, { c: "KeyK" }, { c: "KeyL" },
-        { c: "Semicolon" }, { c: "Quote" },
-        { c: "Enter", u: 2.35 }
-      ],
-      [{ spacer: true }], // small alignment spacer (keeps blocks consistent)
-      [{ c: "Numpad4" }, { c: "Numpad5" }, { c: "Numpad6" }, { c: "NumpadAdd" }]
-    ],
-
-    // Row 4: Shift Z../ Shift | Up | 1 2 3 Enter
-    [
-      [
-        { c: "ShiftLeft", u: 2.45 },
-        { c: "KeyZ" }, { c: "KeyX" }, { c: "KeyC" }, { c: "KeyV" }, { c: "KeyB" },
-        { c: "KeyN" }, { c: "KeyM" },
-        { c: "Comma" }, { c: "Period" }, { c: "Slash" },
-        { c: "ShiftRight", u: 2.7 }
-      ],
-      [{ c: "ArrowUp" }],
-      [{ c: "Numpad1" }, { c: "Numpad2" }, { c: "Numpad3" }, { c: "NumpadEnter" }]
-    ],
-
-    // Row 5: Ctrl Win Alt Space Alt Win Menu Ctrl | Left Down Right | 0 . Enter
-    [
-      [
-        { c: "ControlLeft", u: 1.35 },
-        { c: "MetaLeft", u: 1.35 },
-        { c: "AltLeft", u: 1.35 },
-        { c: "Space", u: 6.5 },
-        { c: "AltRight", u: 1.35 },
-        { c: "MetaRight", u: 1.35 },
-        { c: "ContextMenu", u: 1.35 },
-        { c: "ControlRight", u: 1.6 }
-      ],
-      [{ c: "ArrowLeft" }, { c: "ArrowDown" }, { c: "ArrowRight" }],
-      [{ c: "Numpad0", u: 2.25 }, { c: "NumpadDecimal" }, { c: "NumpadEnter" }]
-    ]
-  ];
-
-  // --------- Label maps ---------
-  const EN = {
-    Backquote: ["`", "~"],
-    Digit1: ["1", "!"], Digit2: ["2", "@"], Digit3: ["3", "#"], Digit4: ["4", "$"], Digit5: ["5", "%"],
-    Digit6: ["6", "^"], Digit7: ["7", "&"], Digit8: ["8", "*"], Digit9: ["9", "("], Digit0: ["0", ")"],
-    Minus: ["-", "_"], Equal: ["=", "+"],
-    BracketLeft: ["[", "{"], BracketRight: ["]", "}"], Backslash: ["\\", "|"],
-    Semicolon: [";", ":"], Quote: ["'", "\""],
-    Comma: [",", "<"], Period: [".", ">"], Slash: ["/", "?"]
+      hudHint: "Press a key",
+      hudLiveHint: "Live: hold the key"
+    }
   };
 
-  const RU = {
-    // RU legends for letter keys (physical)
+  // Легенды для букв/символов (то, что написано на клавишах)
+  const LEGEND_EN = {
+    Backquote: "`",
+    Digit1: "1", Digit2: "2", Digit3: "3", Digit4: "4", Digit5: "5",
+    Digit6: "6", Digit7: "7", Digit8: "8", Digit9: "9", Digit0: "0",
+    Minus: "-", Equal: "=",
+    KeyQ: "Q", KeyW: "W", KeyE: "E", KeyR: "R", KeyT: "T", KeyY: "Y", KeyU: "U", KeyI: "I", KeyO: "O", KeyP: "P",
+    BracketLeft: "[", BracketRight: "]", Backslash: "\\",
+    KeyA: "A", KeyS: "S", KeyD: "D", KeyF: "F", KeyG: "G", KeyH: "H", KeyJ: "J", KeyK: "K", KeyL: "L",
+    Semicolon: ";", Quote: "'",
+    KeyZ: "Z", KeyX: "X", KeyC: "C", KeyV: "V", KeyB: "B", KeyN: "N", KeyM: "M",
+    Comma: ",", Period: ".", Slash: "/"
+  };
+
+  const LEGEND_RU = {
+    Backquote: "Ё",
+    Digit1: "1", Digit2: "2", Digit3: "3", Digit4: "4", Digit5: "5",
+    Digit6: "6", Digit7: "7", Digit8: "8", Digit9: "9", Digit0: "0",
+    Minus: "-", Equal: "=",
     KeyQ: "Й", KeyW: "Ц", KeyE: "У", KeyR: "К", KeyT: "Е", KeyY: "Н", KeyU: "Г", KeyI: "Ш", KeyO: "Щ", KeyP: "З",
+    BracketLeft: "Х", BracketRight: "Ъ", Backslash: "\\",
     KeyA: "Ф", KeyS: "Ы", KeyD: "В", KeyF: "А", KeyG: "П", KeyH: "Р", KeyJ: "О", KeyK: "Л", KeyL: "Д",
+    Semicolon: "Ж", Quote: "Э",
     KeyZ: "Я", KeyX: "Ч", KeyC: "С", KeyV: "М", KeyB: "И", KeyN: "Т", KeyM: "Ь",
-    Backquote: ["Ё", "Ё"],
-    BracketLeft: ["Х", "Х"], BracketRight: ["Ъ", "Ъ"],
-    Semicolon: ["Ж", "Ж"], Quote: ["Э", "Э"],
-    Comma: ["Б", "Б"], Period: ["Ю", "Ю"], Slash: [".", ","],
-    Backslash: ["\\", "/"],
-
-    Digit1: ["1", "!"], Digit2: ["2", "\""], Digit3: ["3", "№"], Digit4: ["4", ";"], Digit5: ["5", "%"],
-    Digit6: ["6", ":"], Digit7: ["7", "?"], Digit8: ["8", "*"], Digit9: ["9", "("], Digit0: ["0", ")"],
-    Minus: ["-", "_"], Equal: ["=", "+"]
+    Comma: "Б", Period: "Ю", Slash: "."
   };
 
-  function loadSettings(){
-    try{
-      const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
-      if (typeof saved.capture === "boolean") state.capture = saved.capture;
-      if (saved.mode === "live" || saved.mode === "latch") state.mode = saved.mode;
-      if (saved.theme === "day" || saved.theme === "night") state.theme = saved.theme;
-      if (saved.lang === "en" || saved.lang === "ru") state.lang = saved.lang;
-      if (saved.platform === "windows" || saved.platform === "mac") state.platform = saved.platform;
-    }catch{}
-  }
-  function saveSettings(){
-    localStorage.setItem(LS_KEY, JSON.stringify({
-      capture: state.capture,
-      mode: state.mode,
-      theme: state.theme,
-      lang: state.lang,
-      platform: state.platform
-    }));
+  const $ = (sel, root = document) => root.querySelector(sel);
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return { ...DEFAULTS };
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULTS, ...parsed };
+    } catch {
+      return { ...DEFAULTS };
+    }
   }
 
-  // --------- DOM helpers ---------
-  const $ = (id) => document.getElementById(id);
-
-  function init(){
-    loadSettings();
-
-    el.stage = $("stage");
-    el.kbScale = $("kbScale");
-    el.topbar = $("topbar");
-
-    el.btnCapture = $("btnCapture");
-    el.btnMode = $("btnMode");
-    el.btnClear = $("btnClear");
-    el.btnTheme = $("btnTheme");
-    el.btnLang = $("btnLang");
-    el.btnPlatform = $("btnPlatform");
-    el.btnFS = $("btnFS");
-    el.btnHelp = $("btnHelp");
-
-    el.overlay = $("overlay");
-    el.btnClose = $("btnClose");
-    el.btnOk = $("btnOk");
-
-    el.vKey = $("vKey");
-    el.vCode = $("vCode");
-    el.vKeyCode = $("vKeyCode");
-    el.vRepeat = $("vRepeat");
-    el.vDown = $("vDown");
-    el.vMax = $("vMax");
-    el.vLatched = $("vLatched");
-
-    el.pillMode = $("pillMode");
-    el.pillOffline = $("pillOffline");
-    el.pillFocus = $("pillFocus");
-
-    buildKeyboard();
-    bindUI();
-    applyAll();
-    installFit();
-    installEvents();
-    installSW();
-    updateOnline();
-    updateFocus();
-
-    // make stage focusable on click (helps keyboard events)
-    document.addEventListener("pointerdown", () => updateFocus(), { passive: true });
+  function saveSettings(s) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   }
 
-  function bindUI(){
-    el.btnCapture.addEventListener("click", () => {
-      state.capture = !state.capture;
-      saveSettings();
-      applyControls();
-    });
+  let settings = loadSettings();
 
-    el.btnMode.addEventListener("click", () => {
-      state.mode = (state.mode === "live") ? "latch" : "live";
-      if (state.mode === "live") state.latched.clear();
-      saveSettings();
-      applyControls();
-      renderHighlights();
-      updateCounters();
-    });
+  // State
+  const down = new Set();
+  const latched = new Set();
+  let maxDown = 0;
 
-    el.btnClear.addEventListener("click", () => {
-      state.down.clear();
-      state.latched.clear();
-      state.maxDown = 0;
-      updateInfo(null);
-      renderHighlights();
-      updateCounters();
-    });
+  // Build UI skeleton
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">K</div>
+        <div class="brand-title">Keyboard Tester</div>
+      </div>
 
-    el.btnTheme.addEventListener("click", () => {
-      state.theme = (state.theme === "night") ? "day" : "night";
-      saveSettings();
-      applyTheme();
-      fitKeyboard();
-    });
+      <div class="pillbar">
+        <div class="pill live-pill" id="livePill"><span class="dot"></span><span id="liveText">Live</span></div>
 
-    el.btnLang.addEventListener("click", () => {
-      state.lang = (state.lang === "en") ? "ru" : "en";
-      saveSettings();
-      rerenderLegends();
-    });
+        <button class="pill" id="captureBtn" type="button"></button>
+        <button class="pill" id="modeBtn" type="button"></button>
+        <button class="pill" id="clearBtn" type="button"></button>
 
-    el.btnPlatform.addEventListener("click", () => {
-      state.platform = (state.platform === "windows") ? "mac" : "windows";
-      saveSettings();
-      rerenderLegends();
-    });
+        <button class="pill" id="langBtn" type="button"></button>
+        <button class="pill" id="osBtn" type="button"></button>
 
-    el.btnFS.addEventListener("click", async () => {
-      try{
-        if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
-        else await document.exitFullscreen();
-      }catch{}
-    });
+        <button class="pill" id="themeBtn" type="button"></button>
+        <button class="pill" id="fsBtn" type="button">Fullscreen</button>
+        <button class="pill" id="helpBtn" type="button" aria-expanded="false">Help</button>
+      </div>
+    </header>
 
-    el.btnHelp.addEventListener("click", openHelp);
-    el.btnClose.addEventListener("click", closeHelp);
-    el.btnOk.addEventListener("click", closeHelp);
+    <aside class="hud" id="hud">
+      <div class="hud-title" id="hudTitle">—</div>
+      <div class="hud-sub" id="hudSub">Нажми клавишу</div>
 
-    el.overlay.addEventListener("click", (e) => {
-      if (e.target === el.overlay) closeHelp();
-    });
+      <div class="hud-grid">
+        <div class="hud-row">
+          <div class="hud-k">event.key</div>
+          <div class="hud-v" id="vKey">—</div>
+        </div>
+        <div class="hud-row">
+          <div class="hud-k">event.code</div>
+          <div class="hud-v" id="vCode">—</div>
+        </div>
+        <div class="hud-row">
+          <div class="hud-k">keyCode</div>
+          <div class="hud-v" id="vKeyCode">—</div>
+        </div>
+        <div class="hud-row">
+          <div class="hud-k">repeat</div>
+          <div class="hud-v" id="vRepeat">—</div>
+        </div>
+      </div>
 
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && isHelpOpen()) closeHelp();
-    });
+      <div class="hud-footer">
+        <div class="hud-chip" id="chipMode">LIVE</div>
+        <div class="hud-chip" id="chipOffline">offline: no</div>
+        <div class="hud-chip" id="chipFocus">focus: yes</div>
+      </div>
 
-    window.addEventListener("online", updateOnline);
-    window.addEventListener("offline", updateOnline);
-    window.addEventListener("focus", updateFocus);
-    window.addEventListener("blur", updateFocus);
+      <div class="hud-mini">
+        <span>down: <b id="mDown">0</b></span>
+        <span>max: <b id="mMax">0</b></span>
+        <span>latched: <b id="mLatched">0</b></span>
+      </div>
+    </aside>
 
-    document.addEventListener("fullscreenchange", () => {
-      el.btnFS.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
-      fitKeyboard();
-    });
+    <section class="stage">
+      <div class="kb-shell" id="kbShell">
+        <div class="kb-scale" id="kbScale">
+          <div class="kb-grid" id="keyboard"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="modal-backdrop" id="helpBackdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <button class="modal-x" id="helpClose" type="button" aria-label="Close">×</button>
+        <div class="modal-title" id="helpTitle">Help</div>
+        <div class="modal-body" id="helpBody"></div>
+        <div class="modal-actions">
+          <button class="pill pill-primary" id="helpOk" type="button">OK</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Elements
+  const captureBtn = $("#captureBtn");
+  const modeBtn = $("#modeBtn");
+  const clearBtn = $("#clearBtn");
+  const langBtn = $("#langBtn");
+  const osBtn = $("#osBtn");
+  const themeBtn = $("#themeBtn");
+  const fsBtn = $("#fsBtn");
+  const helpBtn = $("#helpBtn");
+
+  const helpBackdrop = $("#helpBackdrop");
+  const helpClose = $("#helpClose");
+  const helpOk = $("#helpOk");
+  const helpTitle = $("#helpTitle");
+  const helpBody = $("#helpBody");
+
+  const keyboardEl = $("#keyboard");
+  const kbShell = $("#kbShell");
+  const kbScale = $("#kbScale");
+
+  // HUD
+  const hudTitle = $("#hudTitle");
+  const hudSub = $("#hudSub");
+  const vKey = $("#vKey");
+  const vCode = $("#vCode");
+  const vKeyCode = $("#vKeyCode");
+  const vRepeat = $("#vRepeat");
+  const chipMode = $("#chipMode");
+  const chipOffline = $("#chipOffline");
+  const chipFocus = $("#chipFocus");
+  const mDown = $("#mDown");
+  const mMax = $("#mMax");
+  const mLatched = $("#mLatched");
+  const liveText = $("#liveText");
+
+  // Helpers
+  function isMac() { return settings.os === "mac"; }
+  function legendMap() { return settings.lang === "ru" ? LEGEND_RU : LEGEND_EN; }
+
+  function setTheme(theme) {
+    settings.theme = theme;
+    document.body.dataset.theme = theme;
+    saveSettings(settings);
+    updateTopbar();
+    // перерасчёт масштаба (на всякий)
+    queueResize();
   }
 
-  function applyAll(){
-    applyTheme();
-    applyControls();
-    rerenderLegends();
-    renderHighlights();
-    updateCounters();
-    fitKeyboard();
+  function setLang(lang) {
+    settings.lang = lang;
+    saveSettings(settings);
+    updateTopbar();
+    buildKeyboard();       // чтобы легенды на кнопках тоже сменились (QWERTY vs ЙЦУКЕН)
+    renderHelp(false);     // обновить содержимое help (если открыт)
+    updateHudText();
   }
 
-  function applyTheme(){
-    document.documentElement.setAttribute("data-theme", state.theme);
-
-    // small theme-color tweak
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", state.theme === "night" ? "#0b0f19" : "#eef1f6");
-
-    el.btnTheme.textContent = `Theme: ${state.theme === "night" ? "Night" : "Day"}`;
+  function setOS(os) {
+    settings.os = os;
+    saveSettings(settings);
+    updateTopbar();
+    buildKeyboard();       // чтобы Win/⌘ и Alt/⌥ поменялись
   }
 
-  function applyControls(){
-    el.btnCapture.setAttribute("aria-pressed", String(state.capture));
-    el.btnCapture.textContent = `Capture: ${state.capture ? "ON" : "OFF"}`;
-
-    el.btnMode.setAttribute("aria-pressed", String(state.mode === "latch"));
-    el.btnMode.textContent = `Mode: ${state.mode === "live" ? "Live" : "Latch"}`;
-
-    el.btnLang.textContent = state.lang.toUpperCase();
-    el.btnPlatform.textContent = state.platform === "windows" ? "Windows" : "Mac";
-
-    el.pillMode.textContent = state.mode === "live" ? "LIVE" : "LATCH";
+  function setMode(mode) {
+    settings.mode = mode;
+    saveSettings(settings);
+    chipMode.textContent = mode.toUpperCase();
+    updateTopbar();
+    syncHighlights();
   }
 
-  // --------- Keyboard rendering ---------
-  function buildKeyboard(){
-    el.kbScale.innerHTML = "";
-    const kb = document.createElement("div");
-    kb.className = "kb";
-    kb.id = "kb";
+  function setCapture(on) {
+    settings.capture = !!on;
+    saveSettings(settings);
+    updateTopbar();
+  }
 
-    for (const rowBlocks of LAYOUT){
-      const row = document.createElement("div");
-      row.className = "row";
+  function updateHudText() {
+    const t = I18N[settings.lang];
+    hudSub.textContent = settings.mode === "live" ? t.hudLiveHint : t.hudHint;
+    liveText.textContent = t.live;
+  }
 
-      rowBlocks.forEach((block, idx) => {
-        if (block.length === 1 && block[0].spacer){
-          const spacer = document.createElement("div");
-          spacer.className = "blockSpacer";
-          spacer.style.width = "10px";
-          row.appendChild(spacer);
-          return;
-        }
+  function updateTopbar() {
+    const t = I18N[settings.lang];
 
-        block.forEach((k) => row.appendChild(makeKey(k)));
+    captureBtn.textContent = settings.capture ? t.captureOn : t.captureOff;
+    captureBtn.classList.toggle("is-on", settings.capture);
 
-        if (idx !== rowBlocks.length - 1){
-          const spacer = document.createElement("div");
-          spacer.className = "blockSpacer";
-          row.appendChild(spacer);
-        }
-      });
+    modeBtn.textContent = settings.mode === "live" ? t.modeLive : t.modeLatch;
 
-      kb.appendChild(row);
+    clearBtn.textContent = t.clear;
+
+    langBtn.textContent = settings.lang.toUpperCase();
+
+    osBtn.textContent = isMac() ? "Mac" : "Windows";
+
+    themeBtn.textContent = settings.theme === "night" ? t.themeNight : t.themeDay;
+
+    fsBtn.textContent = t.fullscreen;
+    helpBtn.textContent = t.help;
+
+    updateHudText();
+  }
+
+  function renderHelp(open) {
+    const t = I18N[settings.lang];
+    helpTitle.textContent = t.helpTitle;
+    helpOk.textContent = t.ok;
+
+    // Безопасный рендер: минимально markdown-подобный для **...**
+    const html = t.helpLines.map(line => {
+      const esc = line
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      const bolded = esc.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+      return `<div class="help-line">• ${bolded}</div>`;
+    }).join("");
+
+    helpBody.innerHTML = html;
+
+    if (open === true) {
+      helpBackdrop.hidden = false;
+      helpBtn.setAttribute("aria-expanded", "true");
+      // фокус внутрь
+      setTimeout(() => helpOk.focus(), 0);
+    } else if (open === false) {
+      helpBackdrop.hidden = true;
+      helpBtn.setAttribute("aria-expanded", "false");
+    } else {
+      // open === null: только перерисовать текст (если открыт)
+      // ничего
+    }
+  }
+
+  function toggleHelp() {
+    const willOpen = helpBackdrop.hidden;
+    renderHelp(willOpen);
+  }
+
+  function clearAll() {
+    down.clear();
+    latched.clear();
+    maxDown = 0;
+    mDown.textContent = "0";
+    mMax.textContent = "0";
+    mLatched.textContent = "0";
+    vKey.textContent = "—";
+    vCode.textContent = "—";
+    vKeyCode.textContent = "—";
+    vRepeat.textContent = "—";
+    hudTitle.textContent = "—";
+    syncHighlights();
+  }
+
+  // Keyboard layout (24 columns, 6 rows)
+  // Колонки: 1..15 main, 16 gap, 17..19 nav/prtsc cluster, 20 gap, 21..24 numpad
+  function keyLabelFor(code, fallback) {
+    const map = legendMap();
+    return map[code] || fallback || code;
+  }
+
+  function makeKey(def) {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "key";
+    el.dataset.code = def.code;
+    el.style.gridColumn = `${def.c} / span ${def.w || 1}`;
+    el.style.gridRow = `${def.r} / span ${def.h || 1}`;
+
+    el.innerHTML = `
+      <div class="k-main">${def.main}</div>
+      ${def.sub ? `<div class="k-sub">${def.sub}</div>` : ""}
+    `;
+
+    // Клик мышкой — как “виртуальное нажатие” (для демонстрации)
+    el.addEventListener("click", () => {
+      // клик не должен ломать фокус/залипание
+      if (settings.mode === "latch") {
+        if (latched.has(def.code)) latched.delete(def.code);
+        else latched.add(def.code);
+        mLatched.textContent = String(latched.size);
+        syncHighlights();
+      } else {
+        // В live — краткий флэш
+        el.classList.add("is-down");
+        setTimeout(() => el.classList.remove("is-down"), 160);
+      }
+    });
+
+    return el;
+  }
+
+  function buildKeyboard() {
+    keyboardEl.innerHTML = "";
+
+    const metaL = isMac() ? "⌘" : "Win";
+    const metaR = isMac() ? "⌘" : "Win";
+    const altL = isMac() ? "⌥" : "Alt";
+    const altR = isMac() ? "⌥" : "Alt";
+
+    const defs = [
+      // Row 1 (function row)
+      { code: "Escape", r: 1, c: 1, w: 1, main: "Esc", sub: "Escape" },
+      { code: "F1", r: 1, c: 3, main: "F1" },
+      { code: "F2", r: 1, c: 4, main: "F2" },
+      { code: "F3", r: 1, c: 5, main: "F3" },
+      { code: "F4", r: 1, c: 6, main: "F4" },
+      { code: "F5", r: 1, c: 8, main: "F5" },
+      { code: "F6", r: 1, c: 9, main: "F6" },
+      { code: "F7", r: 1, c: 10, main: "F7" },
+      { code: "F8", r: 1, c: 11, main: "F8" },
+      { code: "F9", r: 1, c: 13, main: "F9" },
+      { code: "F10", r: 1, c: 14, main: "F10" },
+      { code: "F11", r: 1, c: 15, main: "F11" },
+      { code: "F12", r: 1, c: 16, main: "F12" },
+
+      { code: "PrintScreen", r: 1, c: 17, main: "Prt", sub: "PrintScreen" },
+      { code: "ScrollLock", r: 1, c: 18, main: "Scr", sub: "ScrollLock" },
+      { code: "Pause", r: 1, c: 19, main: "Pause", sub: "Pause" },
+
+      // Row 2 (numbers + Ins/Home/PgUp + numpad ops)
+      { code: "Backquote", r: 2, c: 1, main: keyLabelFor("Backquote", "`") },
+      { code: "Digit1", r: 2, c: 2, main: keyLabelFor("Digit1", "1") },
+      { code: "Digit2", r: 2, c: 3, main: keyLabelFor("Digit2", "2") },
+      { code: "Digit3", r: 2, c: 4, main: keyLabelFor("Digit3", "3") },
+      { code: "Digit4", r: 2, c: 5, main: keyLabelFor("Digit4", "4") },
+      { code: "Digit5", r: 2, c: 6, main: keyLabelFor("Digit5", "5") },
+      { code: "Digit6", r: 2, c: 7, main: keyLabelFor("Digit6", "6") },
+      { code: "Digit7", r: 2, c: 8, main: keyLabelFor("Digit7", "7") },
+      { code: "Digit8", r: 2, c: 9, main: keyLabelFor("Digit8", "8") },
+      { code: "Digit9", r: 2, c: 10, main: keyLabelFor("Digit9", "9") },
+      { code: "Digit0", r: 2, c: 11, main: keyLabelFor("Digit0", "0") },
+      { code: "Minus", r: 2, c: 12, main: keyLabelFor("Minus", "-"), sub: "Minus" },
+      { code: "Equal", r: 2, c: 13, main: keyLabelFor("Equal", "="), sub: "Equal" },
+      { code: "Backspace", r: 2, c: 14, w: 2, main: "Backspace", sub: "Backspace" },
+
+      { code: "Insert", r: 2, c: 17, main: "Ins", sub: "Insert" },
+      { code: "Home", r: 2, c: 18, main: "Home", sub: "Home" },
+      { code: "PageUp", r: 2, c: 19, main: "PgUp", sub: "PageUp" },
+
+      { code: "NumLock", r: 2, c: 21, main: "NumLock", sub: "NumLock" },
+      { code: "NumpadDivide", r: 2, c: 22, main: "/", sub: "NumpadDivide" },
+      { code: "NumpadMultiply", r: 2, c: 23, main: "*", sub: "NumpadMultiply" },
+      { code: "NumpadSubtract", r: 2, c: 24, main: "−", sub: "NumpadSubtract" },
+
+      // Row 3 (Q row + Del/End/PgDn + numpad 7-9 + plus span2)
+      { code: "Tab", r: 3, c: 1, w: 2, main: "Tab", sub: "Tab" },
+      { code: "KeyQ", r: 3, c: 3, main: keyLabelFor("KeyQ", "Q") },
+      { code: "KeyW", r: 3, c: 4, main: keyLabelFor("KeyW", "W") },
+      { code: "KeyE", r: 3, c: 5, main: keyLabelFor("KeyE", "E") },
+      { code: "KeyR", r: 3, c: 6, main: keyLabelFor("KeyR", "R") },
+      { code: "KeyT", r: 3, c: 7, main: keyLabelFor("KeyT", "T") },
+      { code: "KeyY", r: 3, c: 8, main: keyLabelFor("KeyY", "Y") },
+      { code: "KeyU", r: 3, c: 9, main: keyLabelFor("KeyU", "U") },
+      { code: "KeyI", r: 3, c: 10, main: keyLabelFor("KeyI", "I") },
+      { code: "KeyO", r: 3, c: 11, main: keyLabelFor("KeyO", "O") },
+      { code: "KeyP", r: 3, c: 12, main: keyLabelFor("KeyP", "P") },
+      { code: "BracketLeft", r: 3, c: 13, main: keyLabelFor("BracketLeft", "[") },
+      { code: "BracketRight", r: 3, c: 14, main: keyLabelFor("BracketRight", "]") },
+      { code: "Backslash", r: 3, c: 15, main: keyLabelFor("Backslash", "\\") },
+
+      { code: "Delete", r: 3, c: 17, main: "Del", sub: "Delete" },
+      { code: "End", r: 3, c: 18, main: "End", sub: "End" },
+      { code: "PageDown", r: 3, c: 19, main: "PgDn", sub: "PageDown" },
+
+      { code: "Numpad7", r: 3, c: 21, main: "7", sub: "Numpad7" },
+      { code: "Numpad8", r: 3, c: 22, main: "8", sub: "Numpad8" },
+      { code: "Numpad9", r: 3, c: 23, main: "9", sub: "Numpad9" },
+      { code: "NumpadAdd", r: 3, c: 24, h: 2, main: "+", sub: "NumpadAdd" },
+
+      // Row 4 (A row + numpad 4-6)
+      { code: "CapsLock", r: 4, c: 1, w: 2, main: "Caps", sub: "CapsLock" },
+      { code: "KeyA", r: 4, c: 3, main: keyLabelFor("KeyA", "A") },
+      { code: "KeyS", r: 4, c: 4, main: keyLabelFor("KeyS", "S") },
+      { code: "KeyD", r: 4, c: 5, main: keyLabelFor("KeyD", "D") },
+      { code: "KeyF", r: 4, c: 6, main: keyLabelFor("KeyF", "F") },
+      { code: "KeyG", r: 4, c: 7, main: keyLabelFor("KeyG", "G") },
+      { code: "KeyH", r: 4, c: 8, main: keyLabelFor("KeyH", "H") },
+      { code: "KeyJ", r: 4, c: 9, main: keyLabelFor("KeyJ", "J") },
+      { code: "KeyK", r: 4, c: 10, main: keyLabelFor("KeyK", "K") },
+      { code: "KeyL", r: 4, c: 11, main: keyLabelFor("KeyL", "L") },
+      { code: "Semicolon", r: 4, c: 12, main: keyLabelFor("Semicolon", ";"), sub: "Semicolon" },
+      { code: "Quote", r: 4, c: 13, main: keyLabelFor("Quote", "'"), sub: "Quote" },
+      { code: "Enter", r: 4, c: 14, w: 2, main: "Enter", sub: "Enter" },
+
+      { code: "Numpad4", r: 4, c: 21, main: "4", sub: "Numpad4" },
+      { code: "Numpad5", r: 4, c: 22, main: "5", sub: "Numpad5" },
+      { code: "Numpad6", r: 4, c: 23, main: "6", sub: "Numpad6" },
+
+      // Row 5 (Z row + ArrowUp + numpad 1-3 + Enter span2)
+      { code: "ShiftLeft", r: 5, c: 1, w: 3, main: "Shift", sub: "ShiftLeft" },
+      { code: "KeyZ", r: 5, c: 4, main: keyLabelFor("KeyZ", "Z") },
+      { code: "KeyX", r: 5, c: 5, main: keyLabelFor("KeyX", "X") },
+      { code: "KeyC", r: 5, c: 6, main: keyLabelFor("KeyC", "C") },
+      { code: "KeyV", r: 5, c: 7, main: keyLabelFor("KeyV", "V") },
+      { code: "KeyB", r: 5, c: 8, main: keyLabelFor("KeyB", "B") },
+      { code: "KeyN", r: 5, c: 9, main: keyLabelFor("KeyN", "N") },
+      { code: "KeyM", r: 5, c: 10, main: keyLabelFor("KeyM", "M") },
+      { code: "Comma", r: 5, c: 11, main: keyLabelFor("Comma", ",") },
+      { code: "Period", r: 5, c: 12, main: keyLabelFor("Period", ".") },
+      { code: "Slash", r: 5, c: 13, main: keyLabelFor("Slash", "/") },
+      { code: "ShiftRight", r: 5, c: 14, w: 2, main: "Shift", sub: "ShiftRight" },
+
+      { code: "ArrowUp", r: 5, c: 18, main: "▲", sub: "ArrowUp" },
+
+      { code: "Numpad1", r: 5, c: 21, main: "1", sub: "Numpad1" },
+      { code: "Numpad2", r: 5, c: 22, main: "2", sub: "Numpad2" },
+      { code: "Numpad3", r: 5, c: 23, main: "3", sub: "Numpad3" },
+      { code: "NumpadEnter", r: 5, c: 24, h: 2, main: "Enter", sub: "NumpadEnter" },
+
+      // Row 6 (bottom row + arrows + numpad 0/.)
+      { code: "ControlLeft", r: 6, c: 1, w: 2, main: "Ctrl", sub: "ControlLeft" },
+      { code: "MetaLeft", r: 6, c: 3, main: metaL, sub: "MetaLeft" },
+      { code: "AltLeft", r: 6, c: 4, main: altL, sub: "AltLeft" },
+      { code: "Space", r: 6, c: 5, w: 5, main: "Space", sub: "Space" },
+      { code: "AltRight", r: 6, c: 10, main: altR, sub: "AltRight" },
+      { code: "MetaRight", r: 6, c: 11, main: metaR, sub: "MetaRight" },
+      { code: "ContextMenu", r: 6, c: 12, main: "Menu", sub: "ContextMenu" },
+      { code: "ControlRight", r: 6, c: 13, w: 2, main: "Ctrl", sub: "ControlRight" },
+
+      { code: "ArrowLeft", r: 6, c: 17, main: "◀", sub: "ArrowLeft" },
+      { code: "ArrowDown", r: 6, c: 18, main: "▼", sub: "ArrowDown" },
+      { code: "ArrowRight", r: 6, c: 19, main: "▶", sub: "ArrowRight" },
+
+      { code: "Numpad0", r: 6, c: 21, w: 2, main: "0", sub: "Numpad0" },
+      { code: "NumpadDecimal", r: 6, c: 23, main: ".", sub: "NumpadDecimal" }
+    ];
+
+    defs.forEach(d => keyboardEl.appendChild(makeKey(d)));
+    syncHighlights();
+    queueResize();
+  }
+
+  function syncHighlights() {
+    const keys = keyboardEl.querySelectorAll(".key");
+    const active = new Set();
+
+    if (settings.mode === "live") {
+      down.forEach(c => active.add(c));
+    } else {
+      down.forEach(c => active.add(c));
+      latched.forEach(c => active.add(c));
     }
 
-    el.kbScale.appendChild(kb);
-  }
-
-  function makeKey(def){
-    const key = document.createElement("div");
-    key.className = "key";
-    key.dataset.code = def.c;
-    key.style.setProperty("--u", String(def.u ?? 1));
-
-    const main = document.createElement("div");
-    main.className = "main";
-    const sub = document.createElement("div");
-    sub.className = "sub";
-
-    key.appendChild(main);
-    key.appendChild(sub);
-
-    // click to "latch" (optional convenience) only in latch mode
-    key.addEventListener("click", () => {
-      if (state.mode !== "latch") return;
-      const code = def.c;
-      if (state.latched.has(code)) state.latched.delete(code);
-      else state.latched.add(code);
-      renderHighlights();
-      updateCounters();
+    keys.forEach(el => {
+      const code = el.dataset.code;
+      el.classList.toggle("is-down", active.has(code));
+      el.classList.toggle("is-latched", settings.mode === "latch" && latched.has(code));
     });
 
-    return key;
+    mDown.textContent = String(down.size);
+    mLatched.textContent = String(latched.size);
+    mMax.textContent = String(maxDown);
   }
 
-  function rerenderLegends(){
-    const keys = el.kbScale.querySelectorAll(".key");
-    keys.forEach((node) => {
-      const code = node.dataset.code;
-      const main = node.querySelector(".main");
-      const sub = node.querySelector(".sub");
-
-      const { label, small } = legendFor(code);
-      main.textContent = label;
-      sub.textContent = small;
-
-      // slightly different style for wide utility keys
-      const wide = isWideKey(code);
-      node.classList.toggle("wide", wide);
-    });
-
-    fitKeyboard();
+  function updateHudFromEvent(e) {
+    hudTitle.textContent = e.key && e.key.length ? e.key : "—";
+    vKey.textContent = e.key || "—";
+    vCode.textContent = e.code || "—";
+    vKeyCode.textContent = String(e.keyCode ?? "—");
+    vRepeat.textContent = e.repeat ? "yes" : "no";
   }
 
-  function isWideKey(code){
-    return ["Backspace","Tab","CapsLock","Enter","ShiftLeft","ShiftRight","Space"].includes(code);
+  function shouldCapture(e) {
+    if (!settings.capture) return false;
+
+    // Глушим системные комбинации и скролл
+    if (e.ctrlKey || e.metaKey) return true;
+    const k = e.key;
+    const code = e.code;
+
+    if (k === " " || code === "Space") return true;
+    if (code.startsWith("Arrow")) return true;
+    if (code === "Tab") return true;
+
+    // PageUp/Down/Home/End — тоже часто скроллит
+    if (["PageUp", "PageDown", "Home", "End"].includes(code)) return true;
+
+    return false;
   }
 
-  function legendFor(code){
-    // Function keys
-    if (/^F\d+$/.test(code)) return { label: code, small: code };
-
-    // Numpad keys
-    if (code.startsWith("Numpad")){
-      const m = {
-        NumpadDivide: "/", NumpadMultiply: "*", NumpadSubtract: "−", NumpadAdd: "+",
-        NumpadDecimal: ".", NumpadEnter: "Enter"
-      };
-      if (code === "NumLock") return { label: "Num", small: "NumLock" };
-      if (m[code]) return { label: m[code], small: code.replace("Numpad","Numpa") };
-      const digit = code.replace("Numpad","");
-      if (/^\d+$/.test(digit)) return { label: digit, small: code };
-      return { label: code.replace("Numpad",""), small: code };
-    }
-
-    // Arrows
-    if (code.startsWith("Arrow")){
-      const a = { ArrowUp:"▲", ArrowDown:"▼", ArrowLeft:"◀", ArrowRight:"▶" };
-      return { label: a[code] || code, small: code };
-    }
-
-    // Nav cluster
-    const nav = {
-      Insert:"Ins", Delete:"Del", Home:"Home", End:"End", PageUp:"PgUp", PageDown:"PgDn"
-    };
-    if (nav[code]) return { label: nav[code], small: code };
-
-    // Modifiers / specials
-    const isMac = state.platform === "mac";
-    const mod = {
-      Escape: ["Esc","Escape"],
-      Backspace: ["Backspace","Backspace"],
-      Tab: ["Tab","Tab"],
-      CapsLock: ["Caps","CapsLock"],
-      Enter: ["Enter","Enter"],
-      ShiftLeft: ["Shift","ShiftLeft"],
-      ShiftRight: ["Shift","ShiftRight"],
-      ControlLeft: ["Ctrl","ControlLeft"],
-      ControlRight: ["Ctrl","ControlRight"],
-      AltLeft: isMac ? ["⌥","AltLeft"] : ["Alt","AltLeft"],
-      AltRight: isMac ? ["⌥","AltRight"] : ["Alt","AltRight"],
-      MetaLeft: isMac ? ["⌘","MetaLeft"] : ["Win","MetaLeft"],
-      MetaRight: isMac ? ["⌘","MetaRight"] : ["Win","MetaRight"],
-      ContextMenu: isMac ? ["Menu","ContextMenu"] : ["Menu","ContextMenu"],
-      Space: ["Space","Space"],
-      PrintScreen: ["Prt","PrintScreen"],
-      ScrollLock: ["Scr","ScrollLock"],
-      Pause: ["Pause","Pause"]
-    };
-    if (mod[code]) return { label: mod[code][0], small: mod[code][1] };
-
-    // Letters
-    if (code.startsWith("Key")){
-      if (state.lang === "ru" && RU[code]) return { label: RU[code], small: code };
-      return { label: code.replace("Key",""), small: code };
-    }
-
-    // Punctuation / digits (layout aware)
-    const dict = (state.lang === "ru") ? RU : EN;
-    if (dict[code]){
-      const v = dict[code];
-      if (Array.isArray(v)) return { label: v[0], small: code };
-      return { label: String(v), small: code };
-    }
-
-    // Digits if not mapped
-    if (code.startsWith("Digit")){
-      return { label: code.replace("Digit",""), small: code };
-    }
-
-    return { label: code, small: code };
-  }
-
-  // --------- Highlight logic ---------
-  function installEvents(){
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    window.addEventListener("keyup", onKeyUp, { capture: true });
-  }
-
-  function shouldIgnoreEvent(e){
-    const t = e.target;
-    if (!t) return false;
-    const tag = t.tagName ? t.tagName.toLowerCase() : "";
-    return tag === "input" || tag === "textarea" || tag === "select" || t.isContentEditable;
-  }
-
-  function onKeyDown(e){
-    if (shouldIgnoreEvent(e)) return;
-
-    // Capture mode: block browser hotkeys/scroll
-    if (state.capture){
-      // allow Ctrl+L etc? — нет, смысл capture как раз глушить
+  function onKeyDown(e) {
+    if (shouldCapture(e)) {
       e.preventDefault();
       e.stopPropagation();
     }
 
-    const code = e.code || "";
-    if (!code) return;
+    if (!e.code) return;
+    updateHudFromEvent(e);
 
-    state.down.add(code);
-    if (state.mode === "latch") state.latched.add(code);
+    if (!down.has(e.code)) {
+      down.add(e.code);
+      maxDown = Math.max(maxDown, down.size);
+    }
 
-    if (state.down.size > state.maxDown) state.maxDown = state.down.size;
+    if (settings.mode === "latch" && !e.repeat) {
+      if (latched.has(e.code)) latched.delete(e.code);
+      else latched.add(e.code);
+    }
 
-    updateInfo(e);
-    renderHighlights();
-    updateCounters();
+    syncHighlights();
   }
 
-  function onKeyUp(e){
-    if (shouldIgnoreEvent(e)) return;
-
-    if (state.capture){
+  function onKeyUp(e) {
+    if (shouldCapture(e)) {
       e.preventDefault();
       e.stopPropagation();
     }
 
-    const code = e.code || "";
-    if (!code) return;
-
-    state.down.delete(code);
-
-    updateInfo(e);
-    renderHighlights();
-    updateCounters();
+    if (!e.code) return;
+    down.delete(e.code);
+    syncHighlights();
   }
 
-  function renderHighlights(){
-    const keys = el.kbScale.querySelectorAll(".key");
-    keys.forEach((node) => {
-      const code = node.dataset.code;
-      const pressed = state.down.has(code);
-      const latched = state.mode === "latch" && state.latched.has(code);
-
-      node.classList.toggle("pressed", pressed);
-      node.classList.toggle("latched", !pressed && latched);
-    });
+  function updateOnlineState() {
+    const off = !navigator.onLine;
+    chipOffline.textContent = `offline: ${off ? "yes" : "no"}`;
+    chipOffline.classList.toggle("bad", off);
   }
 
-  // --------- Info / counters ---------
-  function updateInfo(e){
-    if (!e){
-      el.vKey.textContent = "—";
-      el.vCode.textContent = "—";
-      el.vKeyCode.textContent = "—";
-      el.vRepeat.textContent = "—";
-      return;
-    }
-    el.vKey.textContent = String(e.key ?? "—");
-    el.vCode.textContent = String(e.code ?? "—");
-    el.vKeyCode.textContent = String(e.keyCode ?? "—");
-    el.vRepeat.textContent = e.repeat ? "yes" : "no";
-  }
-
-  function updateCounters(){
-    el.vDown.textContent = String(state.down.size);
-    el.vMax.textContent = String(state.maxDown);
-    el.vLatched.textContent = String(state.latched.size);
-    el.pillMode.textContent = state.mode === "live" ? "LIVE" : "LATCH";
-  }
-
-  function updateOnline(){
-    const offline = !navigator.onLine;
-    el.pillOffline.textContent = `offline: ${offline ? "yes" : "no"}`;
-  }
-
-  function updateFocus(){
+  function updateFocusState() {
     const focused = document.hasFocus();
-    el.pillFocus.textContent = `focus: ${focused ? "yes" : "no"}`;
+    chipFocus.textContent = `focus: ${focused ? "yes" : "no"}`;
+    chipFocus.classList.toggle("bad", !focused);
   }
 
-  // --------- Help modal ---------
-  function isHelpOpen(){
-    return el.overlay.classList.contains("open");
-  }
-  function openHelp(){
-    el.overlay.classList.add("open");
-    el.overlay.setAttribute("aria-hidden", "false");
-  }
-  function closeHelp(){
-    el.overlay.classList.remove("open");
-    el.overlay.setAttribute("aria-hidden", "true");
+  // Fullscreen
+  async function toggleFullscreen() {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen?.();
+      } else {
+        await document.exitFullscreen?.();
+      }
+    } catch {
+      // ignore
+    }
   }
 
-  // --------- Auto-fit keyboard so it never overflows ---------
-  function installFit(){
-    // Keep stage height accurate: header can wrap into 2 lines on small screens
-    const updateStageHeight = () => {
-      const topH = el.topbar.offsetHeight;
-      const stageH = Math.max(200, window.innerHeight - topH);
-      el.stage.style.height = `${stageH}px`;
-    };
-
-    updateStageHeight();
-    window.addEventListener("resize", () => {
-      updateStageHeight();
-      fitKeyboard();
+  // Resize & scale (чтобы ничего не выпирало за рамки)
+  let resizeQueued = false;
+  function queueResize() {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      applyScale();
     });
-
-    ro = new ResizeObserver(() => {
-      updateStageHeight();
-      fitKeyboard();
-    });
-    ro.observe(el.topbar);
   }
 
-  function fitKeyboard(){
-    const kb = el.kbScale;
-    const stage = el.stage;
+  function applyScale() {
+    // Базовые размеры “дизайна”
+    const COLS = 24;
+    const ROWS = 6;
 
-    if (!kb || !stage) return;
+    // Эти значения дают “дорогую” плотность на большинстве экранов
+    const baseUnit = 64;  // ширина 1u
+    const baseGap = 12;
+    const baseH = 64;
 
-    const pad = 18; // safe padding around keyboard inside stage
-    const availW = stage.clientWidth - pad * 2;
-    const availH = stage.clientHeight - pad * 2;
+    // Посчитаем базовую ширину/высоту грида
+    const baseW = (COLS * baseUnit) + ((COLS - 1) * baseGap);
+    const baseHeight = (ROWS * baseH) + ((ROWS - 1) * baseGap);
 
-    const naturalW = kb.offsetWidth;
-    const naturalH = kb.offsetHeight;
+    // Доступное пространство под клавиатуру
+    const rect = kbShell.getBoundingClientRect();
+    const availW = rect.width - 32;
+    const availH = rect.height - 32;
 
-    if (naturalW <= 0 || naturalH <= 0) return;
+    const sW = availW / baseW;
+    const sH = availH / baseHeight;
 
-    // allow slight upscale on big monitors, but keep it classy
-    const scale = Math.min(availW / naturalW, availH / naturalH, 1.12);
-    document.documentElement.style.setProperty("--kb-scale", String(scale));
+    // Разрешаем чуть увеличивать, чтобы “на весь экран” выглядело мощно
+    const scale = Math.max(0.55, Math.min(1.15, sW, sH));
+
+    kbScale.style.setProperty("--u", `${baseUnit}px`);
+    kbScale.style.setProperty("--g", `${baseGap}px`);
+    kbScale.style.setProperty("--h", `${baseH}px`);
+    kbScale.style.setProperty("--scale", scale.toFixed(4));
   }
 
-  // --------- Service worker ---------
-  function installSW(){
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  }
+  // Wire buttons
+  captureBtn.addEventListener("click", () => setCapture(!settings.capture));
+  modeBtn.addEventListener("click", () => setMode(settings.mode === "live" ? "latch" : "live"));
+  clearBtn.addEventListener("click", clearAll);
 
-  // boot
-  document.addEventListener("DOMContentLoaded", init);
+  langBtn.addEventListener("click", () => setLang(settings.lang === "ru" ? "en" : "ru"));
+  osBtn.addEventListener("click", () => setOS(settings.os === "win" ? "mac" : "win"));
+  themeBtn.addEventListener("click", () => setTheme(settings.theme === "night" ? "day" : "night"));
+
+  fsBtn.addEventListener("click", toggleFullscreen);
+  helpBtn.addEventListener("click", toggleHelp);
+
+  // Modal close
+  helpClose.addEventListener("click", () => renderHelp(false));
+  helpOk.addEventListener("click", () => renderHelp(false));
+  helpBackdrop.addEventListener("click", (e) => {
+    if (e.target === helpBackdrop) renderHelp(false);
+  });
+  window.addEventListener("keydown", (e) => {
+    if (!helpBackdrop.hidden && e.key === "Escape") renderHelp(false);
+  });
+
+  // Global listeners
+  window.addEventListener("keydown", onKeyDown, { passive: false });
+  window.addEventListener("keyup", onKeyUp, { passive: false });
+
+  window.addEventListener("online", updateOnlineState);
+  window.addEventListener("offline", updateOnlineState);
+  window.addEventListener("focus", updateFocusState);
+  window.addEventListener("blur", updateFocusState);
+  window.addEventListener("resize", queueResize);
+
+  // Init
+  document.body.dataset.theme = settings.theme;
+  updateTopbar();
+  buildKeyboard();
+  updateOnlineState();
+  updateFocusState();
+  chipMode.textContent = settings.mode.toUpperCase();
 })();

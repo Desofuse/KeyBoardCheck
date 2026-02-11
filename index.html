@@ -1,107 +1,147 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="night">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#070710" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b0b14" />
 
   <title>Keyboard Tester</title>
-  <meta name="description" content="Keyboard tester: full layout, capture mode, latch highlight, day/night. Works locally." />
+  <meta name="description" content="Full keyboard tester: full layout, capture mode, live/latch highlight, day/night theme, offline PWA." />
 
+  <!-- PWA -->
   <link rel="manifest" href="manifest.webmanifest" />
+
+  <!-- Icons -->
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon.ico" sizes="any" />
+
   <link rel="stylesheet" href="styles.css" />
+  <script src="app.js" defer></script>
 </head>
 
-<body data-theme="night">
-  <header class="topbar" id="topbar">
+<body>
+  <header class="topbar">
     <div class="topbar__left">
+      <div class="logo">K</div>
       <div class="brand">
-        <span class="brand__logo">K</span>
-        <div class="brand__txt">
-          <div class="brand__title">Keyboard Tester</div>
-          <div class="brand__sub">Full layout • Capture • Latch • Day/Night • Offline</div>
-        </div>
+        <div class="brand__title">Keyboard Tester</div>
+        <div class="brand__sub">Full layout • Capture • Latch • Day/Night • Offline</div>
       </div>
     </div>
 
     <div class="topbar__right">
-      <button class="pill" id="livePill" type="button" title="Статус">
-        <span class="dot dot--live"></span>
-        <span>Live</span>
+      <button class="chipBtn" id="btnLive" type="button" title="Статус">
+        <span class="dot" id="liveDot"></span>
+        <span id="liveText">Live</span>
       </button>
 
-      <button class="pill pill--on" id="captureBtn" type="button" title="Гасит хоткеи/скролл браузера">
+      <button class="chipBtn is-on" id="btnCapture" type="button" title="Capture: меньше мешают хоткеи и скролл">
         Capture: ON
       </button>
 
-      <button class="pill pill--accent" id="modeBtn" type="button" title="Режим подсветки">
+      <button class="chipBtn" id="btnMode" type="button" title="Live: подсветка только пока держишь. Latch: запоминает подсветку.">
         Mode: Live
       </button>
 
-      <button class="pill" id="clearLatchBtn" type="button" title="Сбросить запомненные клавиши">
+      <button class="chipBtn" id="btnClear" type="button" title="Сбросить подсветку (и Latch-список)">
         Clear
       </button>
 
-      <button class="pill" id="themeBtn" type="button" title="Сменить тему">
+      <span class="sep"></span>
+
+      <button class="chipBtn" id="btnLang" type="button" title="Подписи клавиш RU/EN">
+        RU
+      </button>
+
+      <button class="chipBtn" id="btnOS" type="button" title="Win / Mac подписи">
+        Windows
+      </button>
+
+      <button class="chipBtn" id="btnTheme" type="button" title="Day / Night">
         Theme: Night
       </button>
 
-      <button class="pill" id="helpBtn" type="button" title="Как пользоваться">
+      <button class="chipBtn" id="btnFullscreen" type="button" title="Fullscreen">
+        Fullscreen
+      </button>
+
+      <button class="chipBtn" id="btnHelp" type="button" title="Help">
         Help
       </button>
     </div>
   </header>
 
-  <main class="stage" id="stage" tabindex="0" aria-label="Keyboard tester stage">
-    <section class="hud">
-      <div class="hud__row">
+  <main class="app" id="app" tabindex="0" aria-label="Keyboard tester">
+    <!-- FULLSCREEN KEYBOARD -->
+    <section class="kbViewport" id="kbViewport" aria-label="Keyboard area">
+      <div class="kbScale" id="kbScale" aria-hidden="false">
+        <div id="keyboard" class="keyboard" aria-label="Keyboard visualization"></div>
+      </div>
+    </section>
+
+    <!-- HUD / INFO CARD -->
+    <aside class="hud card" id="hud" aria-label="Info">
+      <div class="hud__top">
         <div class="hud__key" id="hudKey">—</div>
-        <div class="hud__meta" id="hudMeta">Нажми клавишу</div>
+        <div class="hud__hint" id="hudHint">Нажми клавишу</div>
       </div>
 
-      <div class="hud__row2">
-        <span class="chip" id="chipKey">event.key: —</span>
-        <span class="chip" id="chipCode">event.code: —</span>
-        <span class="chip" id="chipKeyCode">keyCode: —</span>
-        <span class="chip" id="chipDown">down: 0</span>
-        <span class="chip" id="chipMax">max: 0</span>
-      </div>
-    </section>
-
-    <section class="kbViewport" id="kbViewport" aria-label="Keyboard viewport">
-      <div class="kbScaler" id="kbScaler">
-        <div class="keyboard" id="keyboard"></div>
-      </div>
-    </section>
-  </main>
-
-  <!-- HELP MODAL -->
-  <div class="modalRoot" id="modalRoot" aria-hidden="true">
-    <div class="modalBackdrop" id="modalBackdrop"></div>
-
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
-      <div class="modal__header">
-        <div class="modal__title" id="helpTitle">Как пользоваться</div>
-        <button class="iconBtn" id="helpCloseX" type="button" aria-label="Закрыть">✕</button>
+      <div class="hud__grid">
+        <div class="hud__row">
+          <span class="lbl">event.key</span>
+          <span class="val" id="metaKey">—</span>
+        </div>
+        <div class="hud__row">
+          <span class="lbl">event.code</span>
+          <span class="val mono" id="metaCode">—</span>
+        </div>
+        <div class="hud__row">
+          <span class="lbl">keyCode</span>
+          <span class="val mono" id="metaKeyCode">—</span>
+        </div>
+        <div class="hud__row">
+          <span class="lbl">repeat</span>
+          <span class="val" id="metaRepeat">—</span>
+        </div>
       </div>
 
-      <div class="modal__body">
-        <ul class="list">
-          <li><b>Live</b> — подсветка только пока удерживаешь.</li>
-          <li><b>Latch</b> — нажатие <b>запоминает</b> клавишу и держит подсветку. Повторное нажатие снимает.</li>
-          <li><b>Clear</b> — сброс запомненных клавиш.</li>
-          <li><b>Capture ON</b> — глушит хоткеи браузера (Ctrl/Meta+…, Space, стрелки и т.п.).</li>
-          <li>Закрытие окна: <b>Close</b>, <b>Esc</b>, или клик вне окна.</li>
-        </ul>
+      <div class="hud__stats">
+        <span class="stat">down: <b id="downCount">0</b></span>
+        <span class="stat">max: <b id="maxCount">0</b></span>
+        <span class="stat">latched: <b id="latchCount">0</b></span>
       </div>
 
-      <div class="modal__footer">
-        <button class="btn" id="helpCloseBtn" type="button">Close</button>
+      <div class="hud__bottom">
+        <span class="badge" id="badgeMode">LIVE</span>
+        <span class="badge badge--muted" id="badgeOffline">offline: —</span>
+        <span class="badge badge--muted" id="badgeFocus">focus: —</span>
+      </div>
+    </aside>
+
+    <!-- HELP MODAL -->
+    <div class="modal" id="helpModal" hidden aria-hidden="true" role="dialog" aria-modal="true">
+      <div class="modal__backdrop" data-close="1"></div>
+      <div class="modal__card" role="document">
+        <div class="modal__head">
+          <div class="modal__title">Как пользоваться</div>
+          <button class="iconBtn" id="helpClose" type="button" aria-label="Close">✕</button>
+        </div>
+
+        <div class="modal__body">
+          <ul class="helpList">
+            <li><b>Live</b> — подсвечивает только пока клавиша зажата.</li>
+            <li><b>Latch</b> — запоминает нажатые клавиши и держит подсветку, пока не нажмёшь <b>Clear</b>.</li>
+            <li><b>Capture</b> — глушит часть хоткеев/скролл (Ctrl/⌘ + комбинации, Space, стрелки и т.п.).</li>
+            <li>Подсветка завязана на <b>event.code</b> — это “физическая” клавиша.</li>
+            <li>Если “не ловит” — кликни в пустое место страницы, чтобы дать фокус.</li>
+          </ul>
+        </div>
+
+        <div class="modal__actions">
+          <button class="btnPrimary" id="helpOk" type="button">OK</button>
+        </div>
       </div>
     </div>
-  </div>
-
-  <script src="app.js"></script>
+  </main>
 </body>
 </html>
